@@ -1,0 +1,6 @@
+./hla_em_dir/output
+./hla_em_dir/EnsembleGenome_STAR_without_scaffolds
+./hla_em_dir/hla_gen.fasta_STAR
+./hla_em_dir/reference
+./hla_em_dir/TCGA_HLA_alleles.tsv
+./hla_em_dir/hla_gen.fasta
