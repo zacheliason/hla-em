@@ -33,29 +33,16 @@ RUN apt-get update && apt-get install -y \
 
 # Download samtools source
 RUN wget --no-check-certificate https://github.com/samtools/samtools/releases/download/1.9/samtools-1.9.tar.bz2
-
-# Extract samtools source
 RUN tar xf samtools-1.9.tar.bz2
-
-# Remove downloaded tarball
 RUN rm samtools-1.9.tar.bz2
-
-# Move to samtools directory
 WORKDIR /samtools-1.9
-
-# Configure samtools
 RUN ./configure --prefix=/usr/local
-
-# Build samtools
 RUN make all all-htslib
-
-# Install samtools
 RUN make install install-htslib
 
 # Debugging steps (comment out as needed)
-RUN ls -la /usr/local/bin     # Check contents of /usr/local/bin
-RUN which samtools            # Check the path of the installed samtools
-
+RUN ls -la /usr/local/bin
+RUN which samtools
 
 # Stage 3: Install pip3 and whichcraft
 FROM ubuntu:20.04
@@ -70,7 +57,6 @@ ENV PATH="/usr/bin/python3:${PATH}"
 
 # Install whichcraft using pip3
 RUN pip3 install whichcraft matplotlib
-RUN pip3 install matplotlib
 
 # Copy only the necessary binaries from the previous stages
 COPY --from=star-builder /usr/local/bin/STAR* /usr/local/bin/
@@ -78,6 +64,8 @@ COPY --from=samtools-builder /usr/local/bin/samtools /usr/local/bin/
 
 # Set the working directory
 WORKDIR /usr/local/bin
+
+RUN mkdir check
 
 # Entry point
 CMD ["bash"]

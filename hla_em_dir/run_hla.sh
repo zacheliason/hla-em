@@ -9,4 +9,4 @@ echo ""
 pip3 install matplotlib
 pip3 install whichcraft
 
-python3 "${VOLUME_PATH}/HLA_EM.py" -t 4 -o "${VOLUME_PATH}/output" -s "${VOLUME_PATH}/EnsembleGenome_STAR_without_scaffolds" -r "${VOLUME_PATH}/hla_gen.fasta" "${VOLUME_PATH}/reference/samples/trial_0/sim.HLA.reads_01.fq" "${VOLUME_PATH}/reference/samples/trial_0/sim.HLA.reads_02.fq"
+python3 "${VOLUME_PATH}/HLA_EM.py" -t 4 -o "${VOLUME_PATH}/output" -s "${VOLUME_PATH}/hla_gen.fasta_STAR" -r "${VOLUME_PATH}/hla_gen.fasta" "${VOLUME_PATH}/reference/samples/trial_0/sim.HLA.reads_01.fq" "${VOLUME_PATH}/reference/samples/trial_0/sim.HLA.reads_02.fq"

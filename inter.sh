@@ -7,4 +7,4 @@ HOST_PATH=$(pwd)/hla_em_dir
 echo "$HOST_PATH":"$VOLUME_PATH"
 
 # Run the Docker command with the specified volume path
-docker run -it --rm -v "$HOST_PATH":"$VOLUME_PATH" hla_em:latest /bin/bash
+docker run -it --rm -v "$HOST_PATH":"$VOLUME_PATH" zeliason/hla_em:latest /bin/bash
