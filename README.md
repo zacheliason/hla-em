@@ -32,13 +32,7 @@ Alternatively, you can use a Docker image that includes all the necessary depend
 ## Installation
 First ensure the prerequisites have been installed on your system and that STAR and SAMtools appear in your PATH.  In order for STAR to align reads against the human genome, you will first need to obtain the human reference genome in FASTA format and a corresponding annotation file in GTF format (these can be downloaded from [Ensembl](https://ensembl.org/Homo_sapiens/Info/Index)).  You must then generate genome indexes for STAR aligner using its genomeGenerate command (see the STAR documentation for details).
 
-You can then download HLA-EM from https://github.com/jin-wash-u/HLA-EM.  Click on "Clone or download" and then click on "Download ZIP".  Unzip the contents in the desired location.  
-
-STAR must also generate indexes for the viral reference genome.  The packaged set of HLA genomes is found at reference/combined_pave_hpv.fa.  This default viral reference should be indexed using the command:
-```
-$ STAR --runMode genomeGenerate --genomeFastaFiles reference/combined_pave_hpv.fa --genomeSAindexNbases 9 --genomeDir reference/combined_pave_hpv_STAR
-```
-
+You can then download HLA-EM from https://github.com/zacheliason/hla-em.  Click on "Clone or download" and then click on "Download ZIP".  Unzip the contents in the desired location.  
 If you desire, you can include HLA-EM in your PATH by running:
 ```
 $ export PATH=$INSTALLDIR:$PATH
@@ -49,7 +43,7 @@ where `$INSTALLDIR` is the folder into which you extracted the HLA-EM files.
 ## Input
 Running HLA-EM with the -h option (or --help) will print a desciption of its optional and required input arguments.  A description of each follows.
 ```
-HLA-EM.py [-h] [-t THREADS] [-r REFERENCE] [--starviral STARVIRAL] [-o OUTNAME]
+HLA-EM.py [-h] [-t THREADS] [-r REFERENCE] [--starHLA STARHLA] [-o OUTNAME]
           [-d] [--tpm TPM] [-p] [-k] [-v] -s STARGENOME reads1 [reads2]
 ```
 ### Optional arguments
@@ -58,13 +52,13 @@ HLA-EM.py [-h] [-t THREADS] [-r REFERENCE] [--starviral STARVIRAL] [-o OUTNAME]
 - -t THREADS, --threads THREADS  
      Some portions of the HLA-EM pipeline support multithreading; if you wish to use this feature, set this to the number of cores available (default: 1)
 - -r REFERENCE, --reference REFERENCE  
-     HLA-EM includes a comprehensive set of HLA reference genomes assembled by PaVE, the use of which is recommended.  However, if you wish to supply your own viral reference in FASTA format, use this option with the path to the file
+     HLA-EM includes a comprehensive set of HLA reference genes maintained by [IMGT, international ImMunoGeneTics Database](https://github.com/ANHIG/IMGTHLA/blob/Latest/hla_gen.fasta), the use of which is recommended.  However, if you wish to supply your own HLA gene reference file in FASTA format, use this option with the path to the file
 - -a ANNOTATION, --annotation ANNOTATION  
-     A file of viral gene annotations in TSV format to be used in place of the default HLA gene annotations [$INSTALLDIR/reference/hpv_gene_annot.tsv]
-- --starviral STARVIRAL  
-     path to a directory containing STAR-generated viral genome indexes based on the reference FASTA
+     A file of HLA gene annotations in TSV format to be used in place of the default HLA gene annotations [$INSTALLDIR/reference/hla_gene_annot.tsv]
+- --starHLA STARHLA
+     path to a directory containing STAR-generated HLA genome indexes based on the reference FASTA
 - -o OUTNAME, --outname OUTNAME  
-     Prefix attached to output file names (default: ./hpvEM)
+     Prefix attached to output file names (default: ./hlaEM)
 - -d, --disabledust  
      By default, HLA-EM filters low-complexity reads using the DUST algorithm.  Specify this option to disable filtering
 - --tpm TPM  
