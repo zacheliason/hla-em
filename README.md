@@ -27,7 +27,7 @@ Alternatively, you can use a Docker image that includes all the necessary depend
      docker run -it --rm -v /path/to/hla-em/src:/src zeliason/hla_em:latest /bin/bash
      ```
 
-  4. You may now run the HLA_EM.py as normal within the counter from mounted `/src` volume.
+  4. You may now run the HLA_EM.py as normal within the container from the mounted `/src` volume.
   
 ## Installation
 First ensure the prerequisites have been installed on your system and that STAR and SAMtools appear in your PATH.  In order for STAR to align reads against the human genome, you will first need to obtain the human reference genome in FASTA format and a corresponding annotation file in GTF format (these can be downloaded from [Ensembl](https://ensembl.org/Homo_sapiens/Info/Index)).  You must then generate genome indexes for STAR aligner using its genomeGenerate command (see the STAR documentation for details).
@@ -52,7 +52,7 @@ HLA-EM.py [-h] [-t THREADS] [-r REFERENCE] [--starHLA STARHLA] [-o OUTNAME]
 - -t THREADS, --threads THREADS  
      Some portions of the HLA-EM pipeline support multithreading; if you wish to use this feature, set this to the number of cores available (default: 1)
 - -r REFERENCE, --reference REFERENCE  
-     HLA-EM includes a comprehensive set of HLA reference genes maintained by [IMGT, international ImMunoGeneTics Database](https://github.com/ANHIG/IMGTHLA/blob/Latest/hla_gen.fasta), the use of which is recommended.  However, if you wish to supply your own HLA gene reference file in FASTA format, use this option with the path to the file
+     HLA-EM includes a comprehensive set of HLA reference genes maintained by [IMGT, the international ImMunoGeneTics Database](https://github.com/ANHIG/IMGTHLA/blob/Latest/hla_gen.fasta), the use of which is recommended.  However, if you wish to supply your own HLA gene reference file in FASTA format, use this option with the path to the file
 - -a ANNOTATION, --annotation ANNOTATION  
      A file of HLA gene annotations in TSV format to be used in place of the default HLA gene annotations [$INSTALLDIR/reference/hla_gene_annot.tsv]
 - --starHLA STARHLA

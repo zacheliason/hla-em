@@ -2,7 +2,7 @@
 
 DEFAULT_VOLUME_PATH="/data"
 VOLUME_PATH=${1:-$DEFAULT_VOLUME_PATH}
-HOST_PATH=$(pwd)/hla_em_dir
+HOST_PATH=$(pwd)/src
 
 echo "mounting $HOST_PATH":"$VOLUME_PATH"
 
