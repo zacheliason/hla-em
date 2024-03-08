@@ -13,7 +13,5 @@ docker run --rm -v "$HOST_PATH":"$VOLUME_PATH" zeliason/hla_em:latest
 
 
 
-
-
 # scratch
 # docker run --rm -v "$HOST_PATH":"$VOLUME_PATH" zeliason/hla_em:latest /bin/bash -c "$VOLUME_PATH"/run_hla.sh $VOLUME_PATH

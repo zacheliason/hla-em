@@ -58,21 +58,21 @@ ENV PATH="/usr/bin/python3:${PATH}"
 # Install whichcraft using pip3
 RUN pip3 install whichcraft matplotlib
 
+# Set the working directory
+WORKDIR /usr/local/bin
+
 # Copy only the necessary binaries from the previous stages
 COPY --from=star-builder /usr/local/bin/STAR* /usr/local/bin/
 COPY --from=samtools-builder /usr/local/bin/samtools /usr/local/bin/
 
-# Set the working directory
-WORKDIR /usr/local/bin
 
 RUN apt-get update && apt-get install -y git
 
+# Clone the repository
 RUN git clone https://github.com/zacheliason/hla-em.git
 
 # Set the working directory to the cloned repository
 WORKDIR /usr/local/bin/hla-em
-RUN echo "NICE"
-RUN ls
 
 # Modify the Python script in-place
 RUN sed -i -e '1i#!/usr/bin/env python3\n' HLA_EM.py
@@ -81,5 +81,8 @@ RUN sed -i -e '1i#!/usr/bin/env python3\n' HLA_EM.py
 RUN chmod +x HLA_EM.py
 
 # Define default command
-ENTRYPOINT ["./HLA_EM.py"]
 CMD ["-h"]
+
+# Set the entry point
+ENTRYPOINT ["/usr/local/bin/hla-em/HLA_EM.py"]
+
