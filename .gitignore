@@ -19,4 +19,7 @@ hla_em_dir/reference
 hla_em_dir/TCGA_HLA_alleles.tsv
 hla_em_dir/hla_gen.fasta
 
+hla_gen.fasta
+TCGA_HLA_alleles.tsv
+
 

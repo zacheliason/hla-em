@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-from CreateMappedReadTable import mapReads
-from EMstep import EmAlgo
+from src.CreateMappedReadTable import mapReads
+from src.EMstep import EmAlgo
 from whichcraft import which
 import subprocess as subp
 import argparse as argp

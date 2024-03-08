@@ -71,6 +71,8 @@ RUN git clone https://github.com/zacheliason/hla-em.git
 
 # Set the working directory to the cloned repository
 WORKDIR /usr/local/bin/hla-em
+RUN echo "NICE"
+RUN ls
 
 # Modify the Python script in-place
 RUN sed -i -e '1i#!/usr/bin/env python3\n' HLA_EM.py
