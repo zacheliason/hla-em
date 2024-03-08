@@ -65,7 +65,19 @@ COPY --from=samtools-builder /usr/local/bin/samtools /usr/local/bin/
 # Set the working directory
 WORKDIR /usr/local/bin
 
-RUN mkdir check
+RUN apt-get update && apt-get install -y git
 
-# Entry point
-CMD ["bash"]
+RUN git clone https://github.com/zacheliason/hla-em.git
+
+# Set the working directory to the cloned repository
+WORKDIR /usr/local/bin/hla-em
+
+# Modify the Python script in-place
+RUN sed -i -e '1i#!/usr/bin/env python3\n' HLA_EM.py
+
+# Make the script executable
+RUN chmod +x HLA_EM.py
+
+# Define default command
+ENTRYPOINT ["./HLA_EM.py"]
+CMD ["-h"]

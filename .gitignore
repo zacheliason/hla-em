@@ -1,3 +1,6 @@
+.idea
+.idea/*
+
 src/output/*
 src/output
 src/EnsembleGenome_STAR_without_scaffolds
