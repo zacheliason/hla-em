@@ -112,6 +112,9 @@ def main():
     if len(args.outname.split('/')) == 1:
         args.outname = os.path.join(os.getcwd(), args.outname)
 
+    reads_basename, reads_dir = os.path.split(args.reads1)
+    print(reads_dir)
+
     if not os.path.isdir(args.outname):
         cmd(["mkdir", args.outname])
     base_outname = os.path.basename(args.outname)
@@ -127,14 +130,14 @@ def main():
              "--outReadsUnmapped Fastx",
              "--outFilterMultimapNmax 100",
              "--outFilterMismatchNmax 4",
-             "--outFileNamePrefix {}.".format(outname)]
+             "--outFileNamePrefix {}.".format(reads_dir)]
     if args.reads1.endswith(".gz"):
         argsHumanAlignSTAR.append("--readFilesCommand zcat")
     if args.reads2 == "not supplied":
         print("Aligning reads to human genome")
         cmd(argsHumanAlignSTAR + ["--readFilesIn {}".format(args.reads1)])
 
-        with open('{}.Log.final.out'.format(outname),'r') as logFile:
+        with open('{}.Log.final.out'.format(reads_dir),'r') as logFile:
             for line in logFile:
                 line = line.strip()
                 if line.startswith('Number of input reads'):
@@ -145,7 +148,7 @@ def main():
         print("Aligning reads to HLA genomes")
         cmd(["STAR", 
              "--genomeDir {path}".format(path=args.starHLA),
-             "--readFilesIn {sampleName}.Unmapped.out.mate1".format(sampleName=outname),
+             "--readFilesIn {sampleName}.Unmapped.out.mate1.fastq".format(sampleName=reads_dir),
              "--runThreadN {}".format(args.threads),
              "--twopassMode Basic",
              "--outSAMtype BAM Unsorted",
@@ -163,7 +166,7 @@ def main():
         print("Aligning reads to human genome")
         cmd(argsHumanAlignSTAR + ["--readFilesIn {} {}".format(args.reads1, args.reads2)])
 
-        with open('{}.Log.final.out'.format(outname),'r') as logFile:
+        with open('{}.Log.final.out'.format(reads_dir),'r') as logFile:
             for line in logFile:
                 line = line.strip()
                 if line.startswith('Number of input reads'):
@@ -176,7 +179,7 @@ def main():
         print("Aligning reads to HLA genomes")
         cmd(["STAR", 
              "--genomeDir {path}".format(path=args.starHLA),
-             "--readFilesIn {sampleName}.Unmapped.out.mate1".format(sampleName=outname),
+             "--readFilesIn {sampleName}/unmapped_reads1.fastq".format(sampleName=reads_dir),
              "--runThreadN {}".format(args.threads),
              "--twopassMode Basic",
              "--outSAMtype BAM Unsorted",
@@ -188,7 +191,7 @@ def main():
         hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
         cmd(["STAR", 
              "--genomeDir {path}".format(path=args.starHLA),
-             "--readFilesIn {sampleName}.Unmapped.out.mate2".format(sampleName=outname),
+             "--readFilesIn {sampleName}/unmapped_reads2.fastq".format(sampleName=reads_dir),
              "--runThreadN {}".format(args.threads),
              "--twopassMode Basic",
              "--outSAMtype BAM Unsorted",
@@ -240,24 +243,3 @@ def main():
 
 if __name__ == '__main__':
     main()
-
-
-
-
-
-
-
-
-
-
-
-var1 = 1
-var2 = 1.234
-var3 = "lily"
-var4 = False
-
-print(var1 + 2)
-print(var3 + 2)
-
-# 3
-# lily is a flower
