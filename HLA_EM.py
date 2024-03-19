@@ -85,6 +85,13 @@ def main():
     myparse.add_argument('-k', '--keepint', action='store_true', help="keep intermediate files")
     myparse.add_argument('-v', '--version', action='version', version='%(prog)s {}'.format(__version__))
 
+    # TODO remove ??
+    myparse.add_argument('--outFilterScoreMinOverLreads', type=float, default=0.66)
+    myparse.add_argument('--outFilterMatchNminOverLreads', type=float, default=0.66)
+    myparse.add_argument('--outFilterMultimapNmaxs', type=float, default=50)
+    myparse.add_argument('--winAnchorMultimapNmaxs', type=float, default=50)
+
+
     # other required arguments
     requiredNamed = myparse.add_argument_group('required arguments')
     requiredNamed.add_argument('-s','--stargenome', help="path to a directory containing STAR-generated\nhuman genome indexes", required=True)
