@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 from src.CreateMappedReadTable import mapReads
+from src.clean_results import clean_output
 from src.EMstep import EmAlgo
 from whichcraft import which
 import subprocess as subp
@@ -11,6 +12,8 @@ import os
 
 __version__ = "1.0.2"
 
+# TODO remove
+os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
 
 def prereqs():
     programs = ["python3", "samtools", "STAR"]
@@ -24,15 +27,12 @@ def prereqs():
 
 
 def cmd(args, write=False, filepath=None, verbose=False):
-    if not verbose:
-        args.append("> /dev/null")
-
     if(write==True):
         temp = sys.stdout
         sys.stdout = open(filepath, 'w')
 
         try:
-            subp.check_call(args, stdout=sys.stdout)
+            subp.check_call(args, stdout=subp.DEVNULL) # stdout=sys.stdout,
         except subp.CalledProcessError as e:
             print("Subprocess error with code: " + str(e.returncode))
             sys.exit(e.returncode)
@@ -45,7 +45,7 @@ def cmd(args, write=False, filepath=None, verbose=False):
     else:
         try:
             print(' '.join(args))
-            subp.check_call(args)
+            subp.check_call(args, stdout=subp.DEVNULL) # stdout=sys.stdout,
         except subp.CalledProcessError as e:
             print("Subprocess error with code: " + str(e.returncode))
             sys.exit(e.returncode)
@@ -88,13 +88,7 @@ def main():
     myparse.add_argument('-k', '--keepint', action='store_true', help="keep intermediate files")
     myparse.add_argument('-v', '--version', action='version', version='%(prog)s {}'.format(__version__))
 
-    # TODO remove ??
-    myparse.add_argument('--outFilterScoreMinOverLread', type=float, default=0.66)
-    myparse.add_argument('--outFilterMatchNminOverLread', type=float, default=0.66)
-    myparse.add_argument('--outFilterMultimapNmax', type=float, default=50)
-    myparse.add_argument('--winAnchorMultimapNmax', type=float, default=50)
-
-    myparse.add_argument('--shortcut', type=bool, default=True)
+    myparse.add_argument('--shortcut', action='store_true', default=False)
 
     # other required arguments
     requiredNamed = myparse.add_argument_group('required arguments')
@@ -105,8 +99,7 @@ def main():
     if args.starHLA == 0:
         args.starHLA = args.reference + '_STAR'
         if not os.path.isdir(args.starHLA):
-            indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference,
-                                genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
+            indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
     if args.starHLA == 0:
         print('Please provide the path to a folder of STAR indices based on your specified HLA genome using the --starHLA argument')
@@ -191,7 +184,7 @@ def main():
 
             os.rename(reads_dir + '.Log.final.out', outname + ".Log.final.out")
         else:
-            print('taking shortcut\n')
+            print('taking shortcut')
 
         with open('{}.Log.final.out'.format(outname),'r') as logFile:
             for line in logFile:
@@ -212,14 +205,12 @@ def main():
              "--outSAMtype BAM Unsorted",
              "--outSAMattributes NH HI NM MD AS XS",
 
+             "--outFilterScoreMinOverLread 0",
+             "--outFilterMatchNminOverLread 0",
+             "--outFilterMatchNmin 0",
              "--outFilterMultimapNmax 999",
-             "--outFilterMismatchNmax 999",
              "--outFilterMismatchNoverLmax 0.08",
-
-             f'--outFilterScoreMinOverLread {args.outFilterScoreMinOverLread}',
-             f'--outFilterMatchNminOverLread {args.outFilterMatchNminOverLread}',
-             f'--outFilterMultimapNmax {args.outFilterMultimapNmax}',
-             f'--winAnchorMultimapNmax {args.winAnchorMultimapNmax}',
+             "--winAnchorMultimapNmax 1000",
 
              "--outFileNamePrefix {}.1.".format(outname)])
         hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
@@ -231,53 +222,33 @@ def main():
              "--outSAMtype BAM Unsorted",
              "--outSAMattributes NH HI NM MD AS XS",
 
+             "--outFilterScoreMinOverLread 0",
+             "--outFilterMatchNminOverLread 0",
+             "--outFilterMatchNmin 0",
              "--outFilterMultimapNmax 999",
-             "--outFilterMismatchNmax 999",
              "--outFilterMismatchNoverLmax 0.08",
-
-             f'--outFilterScoreMinOverLread {args.outFilterScoreMinOverLread}',
-             f'--outFilterMatchNminOverLread {args.outFilterMatchNminOverLread}',
-             f'--outFilterMultimapNmax {args.outFilterMultimapNmax}',
-             f'--winAnchorMultimapNmax {args.winAnchorMultimapNmax}',
+             "--winAnchorMultimapNmax 1000",
 
              "--outFileNamePrefix {}.2.".format(outname)])
         hlaBams.append('{}.2.Aligned.out.bam'.format(outname))
 
+    # Clean unneeded intermediary output and files
     if not args.keepint:
-        # remove extra files from reads_dir
-        dir_to_clean = os.path.split(reads_dir)[0]
-        for filename in os.listdir(dir_to_clean):
-            if os.path.isdir(os.path.join(dir_to_clean, filename)):
-                os.removedirs(os.path.join(dir_to_clean, filename))
-            elif not filename.endswith(".fq"):
-                os.remove(os.path.join(dir_to_clean, filename))
+        allowed_extensions = {'.bam', '.tsv', '.pdf', '.csv', '.fq'}
 
-        # os.remove('{}.Log.progress.out'.format(outname))
-        # os.remove('{}.Log.final.out'.format(outname))
-        # os.remove('{}.Log.out'.format(outname))
-        # os.remove('{}.SJ.out.tab'.format(outname))
-        # os.remove('{}.Chimeric.out.junction'.format(outname))
-        # os.remove('{}.Aligned.out.bam'.format(outname))
-        # os.remove('{}.Unmapped.out.mate1'.format(outname))
-
-        os.remove('{}.1.Log.progress.out'.format(outname))
-        # os.remove('{}.1.Log.final.out'.format(outname))
-        os.remove('{}.1.Log.out'.format(outname))
-        os.remove('{}.1.SJ.out.tab'.format(outname))
-        shutil.rmtree('{}.1._STARgenome'.format(outname))
-        shutil.rmtree('{}.1._STARpass1'.format(outname))
-        if args.reads2 != "not supplied":
-            # os.remove('{}.Unmapped.out.mate2'.format(outname))
-            os.remove('{}.2.Log.progress.out'.format(outname))
-            # os.remove('{}.2.Log.final.out'.format(outname))
-            os.remove('{}.2.Log.out'.format(outname))
-            os.remove('{}.2.SJ.out.tab'.format(outname))
-            shutil.rmtree('{}.2._STARgenome'.format(outname))
-            shutil.rmtree('{}.2._STARpass1'.format(outname))
+        # Clean both samples and output folders
+        directories_to_clean = [os.path.split(reads_dir)[0], args.outname]
+        for dir_to_clean in directories_to_clean:
+            for filename in os.listdir(dir_to_clean):
+                filepath = os.path.join(dir_to_clean, filename)
+                if os.path.isdir(filepath):
+                    shutil.rmtree(filepath)
+                if os.path.isfile(filepath):
+                    _, extension = os.path.splitext(filename)
+                    if extension.lower() not in allowed_extensions and "Log.final.out" not in filename:
+                        os.remove(os.path.join(dir_to_clean, filename))
 
     print("Creating read table", flush=True)
-    print(hlaBams, args.reference, not(args.disabledust), outname, args.annotation)
-
     readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation)
 
     # save readsTable to file
@@ -285,9 +256,9 @@ def main():
         for line in readsTable:
             f.write(line + "\n")
 
-
     print("Running EM algorithm", flush=True)
     EmAlgo(readsTable, allReadsNum, thresholdTpm=args.tpm, outputName=outname, printResult=args.printem)
+    clean_output(outname + ".results.tsv")
 
     sys.exit(0)
 

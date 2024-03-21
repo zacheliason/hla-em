@@ -2,6 +2,7 @@
 
 #from __future__ import print_function
 import matplotlib.pyplot as plt
+import pandas as pd
 import numpy as np
 import matplotlib
 import math
@@ -14,8 +15,14 @@ matplotlib.use('Agg')
 
 # Difference value between successive loglikelihoods below which algorithm is deemed to have converged
 conVal = 1e-4
-numIter = 5
+
+numIter = 5 #0
 maxSteps = 500
+
+# TODO delete
+def save_mr(mr, hlas, name="mapped_reads.csv"):
+    df = pd.DataFrame([{'hla': x.hlaType, 'reads_mapped': x.readNum} for x in mr]).sort_values('reads_mapped')
+    df[df['hla'].isin(hlas)].to_csv(name, index=False)
 
 class mappedRead:
     def __init__(self, inputList):
@@ -75,7 +82,7 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
             steps=0
 
             # Calculate initial l
-            l=-float('inf')
+            l = -float('inf')
 
             converged=False
             while not converged:
@@ -140,7 +147,9 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
         output=[]
         hlaGeneReadCountsDict = {}
         geneNamesSet = set()
-        
+
+        output_lines = []
+
         # Get number of reads that pass TPM threshold:
         totalOutReads = 0
         for j,hla in enumerate(mappedReads):
@@ -152,6 +161,18 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
             if uniqReads*phiOut[j]*1e6/allReadsNum > thresholdTpm:
                 types.append(hlaName)
                 typesAll.append(hlaName)
+
+                print('HLAtype\tMappedReads\tMappedProportion\tMLE_Reads\tMLE_Probability')
+
+                HLA_reference = {
+                    'HLAtype': hlaName,
+                    'MappedReads': hla.readNum,
+                    'MappedProportion': float(hla.readNum) / totalReads,
+                    'MLE_Reads': int(round(uniqReads * phiOut[j])),
+                    'MLE_Probability': round(uniqReads * phiOut[j])/totalOutReads
+                }
+                output_lines.append(HLA_reference)
+
                 output.append('{!s}\t{:d}\t{:.5f}\t{:d}\t{:.5f}'.format(hlaName,
                                     hla.readNum, float(hla.readNum)/totalReads,
                                     int(round(uniqReads*phiOut[j])), round(uniqReads*phiOut[j])/totalOutReads))
@@ -190,7 +211,15 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
                     readProps.append(float(hla.readNum)/totalReads)
                     emProps.append(0.0)
 
+        save_mr(mappedReads, hlas=typesAll, name=outputName + 'before_em.csv')
+        save_mr(mappedReads, hlas=types, name=outputName + 'after_em.csv')
+
         if output:
+
+            df = pd.DataFrame(output_lines)
+            df = df.sort_values('MLE_Probability', ascending=False)
+            df.to_csv(outputName + "cleaner_pandas_output.tsv", sep='\t', index=False)
+
             lOrd = natural_order(types)
             lOrdAll = natural_order(typesAll)
 

@@ -206,9 +206,6 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
 
     print(total_pass_dust / (total_fail_dust + total_pass_dust))
 
-    my_series = pd.Series(hlaRefID_to_totalMappedReads)
-    sorted_series = my_series.sort_values()
-
     # Check if all reads aligned to an HLA reference have equal or better alignment to a reference with more reads
     filteredReadNames_to_aligns = {}
     hlaRefIDs = sorted(hlaRefIdMappedSet)

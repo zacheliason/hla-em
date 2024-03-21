@@ -6,6 +6,11 @@ import re
 import os
 
 
+def split_hla(df):
+	series = df.transpose().iloc[:, 0]
+	split_values = series.str.split()
+	return split_values.str[0], split_values.str[1]
+
 def calculate_match_percentage(list1, list2):
 	if len(list1) != len(list2):
 		raise ValueError("Input lists must have the same length")
@@ -32,8 +37,8 @@ def calculate_match_percentage(list1, list2):
 
 
 
-alleles_path = "/Users/zacheliason/Documents/Work/zhang/2024/new/reference/allele_record.csv"
-output_dir = "/Users/zacheliason/Documents/Work/zhang/2024/new/reference/output"
+alleles_path = "/Users/zeliason/Desktop/hla-em/src/reference/allele_record.csv"
+output_dir = "/Users/zeliason/Desktop/hla-em/src/reference/output"
 
 # Use the following directories if testing locally
 # ALLELES_PATH = "/Users/zacheliason/HLA/reference/allele_record.csv"
@@ -41,6 +46,7 @@ output_dir = "/Users/zacheliason/Documents/Work/zhang/2024/new/reference/output"
 
 # df contains real references simulated data is based on for each run
 alleles_df = pd.read_csv(alleles_path)
+alleles_df['Trial'] = alleles_df.index
 hla_df = alleles_df[["A1_allele", "A2_allele", "B1_allele", "B2_allele", "C1_allele", "C2_allele"]]
 hla_df['Trial'] = hla_df.index
 
@@ -69,7 +75,13 @@ for trial_dir in os.listdir(output_dir):
 
 	results = pd.read_csv(os.path.join(trial_dir, results_tsv), sep="\t")
 
-	hla_results = hla_df[hla_df['Trial'] == trial_num]
+	hla_obs = hla_df[hla_df['Trial'] == trial_num].drop(columns={"Trial"})
+	hla_exp = alleles_df[alleles_df['Trial'] == trial_num][hla_obs.columns]
+
+	hla_type_obs, hla_code_obs = split_hla(hla_obs)
+	hla_type_exp, hla_code_exp = split_hla(hla_exp)
+
+	look = calculate_match_percentage(hla_code_obs, hla_code_exp)
 
 	print()
 
