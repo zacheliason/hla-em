@@ -1,6 +1,12 @@
 .idea
 .idea/*
 
+.DS_Store
+
+*.fa
+*.fasta
+*.pyc
+
 src/output/*
 src/output
 src/EnsembleGenome_STAR_without_scaffolds

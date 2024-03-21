@@ -4,6 +4,7 @@
 from matplotlib import pyplot as plt, lines as lines
 from subprocess import Popen, PIPE
 import argparse as argp
+import pandas as pd
 import numpy as np
 import matplotlib
 import traceback
@@ -20,9 +21,9 @@ matplotlib.use('Agg')
 
 
 class alignInfo:
-    def __init__(self, Lm, Le, pos, cigar):
-        self.Lm = Lm
-        self.Le = Le
+    def __init__(self, match_length, error_length, pos, cigar):
+        self.match_length = match_length
+        self.error_length = error_length
         self.pos = pos
         self.cigar = cigar
 
@@ -30,40 +31,40 @@ class alignInfo:
 class readAligns:
     def __init__(self, *args):
         if len(args) == 3:
-            self.isAmbig, self.passDust, self.dictRefId_AlignInfo = args
+            self.ambig, self.passDust, self.hlaRefID_to_alignInfo = args
 
         else:
-            refId, passDust, mate, Lm, Le, pos, cigar = args
+            refId, passDust, mate, match_length, error_length, pos, cigar = args
 
             mate = int(mate) - 1
-            Lm = int(Lm)
-            Le = int(Le)
+            match_length = int(match_length)
+            error_length = int(error_length)
             pos = int(pos)
-            self.isAmbig = False
+            self.ambig = False
             self.passDust = [False, False]
             self.passDust[mate] = passDust
-            self.dictRefId_AlignInfo = {}
-            self.dictRefId_AlignInfo[refId] = [0, 0]
-            self.dictRefId_AlignInfo[refId][mate] = alignInfo(Lm, Le, pos, cigar)
+            self.hlaRefID_to_alignInfo = {}
+            self.hlaRefID_to_alignInfo[refId] = [0, 0]
+            self.hlaRefID_to_alignInfo[refId][mate] = alignInfo(match_length, error_length, pos, cigar)
 
-    def addAlign(self, refId, passDust, mate, Lm, Le, pos, cigar):
+    def addAlign(self, refId, passDust, mate, match_length, error_length, pos, cigar):
         mate = int(mate) - 1
-        Lm = int(Lm)
-        Le = int(Le)
+        match_length = int(match_length)
+        error_length = int(error_length)
         pos = int(pos)
-        if refId in self.dictRefId_AlignInfo:
-            if self.dictRefId_AlignInfo[refId][mate]:
-                if Lm > self.dictRefId_AlignInfo[refId][mate].Lm:
-                    self.dictRefId_AlignInfo[refId][mate] = alignInfo(Lm, Le, pos, cigar)
+        if refId in self.hlaRefID_to_alignInfo:
+            if self.hlaRefID_to_alignInfo[refId][mate]:
+                if match_length > self.hlaRefID_to_alignInfo[refId][mate].match_length:
+                    self.hlaRefID_to_alignInfo[refId][mate] = alignInfo(match_length, error_length, pos, cigar)
                     self.passDust[mate] = self.passDust[mate] or passDust
             else:
-                self.dictRefId_AlignInfo[refId][mate] = alignInfo(Lm, Le, pos, cigar)
+                self.hlaRefID_to_alignInfo[refId][mate] = alignInfo(match_length, error_length, pos, cigar)
                 self.passDust[mate] = self.passDust[mate] or passDust
         else:
-            self.isAmbig = True
+            self.ambig = True
             self.passDust[mate] = self.passDust[mate] or passDust
-            self.dictRefId_AlignInfo[refId] = [0, 0]
-            self.dictRefId_AlignInfo[refId][mate] = alignInfo(Lm, Le, pos, cigar)
+            self.hlaRefID_to_alignInfo[refId] = [0, 0]
+            self.hlaRefID_to_alignInfo[refId][mate] = alignInfo(match_length, error_length, pos, cigar)
 
 
 # Calculate score to identify low-complexity reads using DUST algorithm
@@ -84,23 +85,21 @@ def dust(read):
     return S
 
 
-def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComplex=True, outputName='hlaType',
-             covMapYmax=0, suppressOutputAndFigures=True):
-    dictReadName_ReadAligns = {}
+def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName='hlaType', covMapYmax=0, suppressOutputAndFigures=True):
+    readNames_to_aligns = {}
     hlaRefIdMappedSet = set()
-    hlaRefIdMappedNumDict = {}
+    hlaRefID_to_totalMappedReads = {}
+    hlaRefID_to_type = {}
+    hlaRefID_to_seq = {}
+
     hlaRefIdGeneDict = {}
-    hlaRefIdSeqDict = {}
     hlaRefIdCovDict = {}
-    hlaRefIdTypeDict = {}
 
     installDir = os.path.dirname(os.path.abspath(__file__))
     print("annot: {}".format(annot))
     # Make dict to translate ref seq names (SAM field 2) into HLA type names
-    if defaultHlaRef:
-        hlaRefPath = installDir + '/reference/combined_pave_hla.fa'
 
-    if defaultHlaRef and not annot:
+    if not annot:
         annot = installDir + '/reference/hla_gene_annot.tsv'
 
     annotColorDict = {'E1': 'g', 'E2': 'gray', 'E3': 'y', 'E4': 'r', 'E5': 'orange',
@@ -117,17 +116,19 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
 
             if line[0] == '>':
                 if hlaRef:
-                    hlaRefIdSeqDict[refId] = hlaRef
+                    hlaRefID_to_seq[refId] = hlaRef
                     hlaRef = ''
                 refId = line.strip().split()[0][1:]
-                hlaRefIdTypeDict[refId] = line.strip().split()[1]
+                hlaRefID_to_type[refId] = line.strip().split()[1]
 
             else:
                 hlaRef += line.strip()
-        hlaRefIdSeqDict[refId] = hlaRef
+        hlaRefID_to_seq[refId] = hlaRef
     # For all HLA*.bam files in directory
 
     for bam in hlaBams:
+        total_fail_dust = 0
+        total_pass_dust = 0
         mate = bam.split('.')[-4]
 
         # Read the file
@@ -143,7 +144,7 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
             line = line.strip().split('\t')
             [readName, readFlags, readRefId, readPos, readCIGAR, readSeq, readTags] = \
                 [line[0], line[1], line[2], int(line[3]), line[5], line[9], line[11:]]
-            readLen = len(readSeq)
+            read_length = len(readSeq)
             readSeq = readSeq.upper()
             try:
                 editDist = [tag for tag in readTags if tag.startswith('NM')][0].split(':')[-1]
@@ -162,7 +163,7 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
             cigarList = list(filter(None, re.split('(\D+)', readCIGAR)))
             alignedSeq = ''
             pos = 0
-            clipLen = 0
+            clip_length = 0
             for cigar in zip(cigarList[0::2], cigarList[1::2]):
                 clen = int(cigar[0])
                 if cigar[1] in 'M=XIP':
@@ -172,23 +173,29 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
                     pos += clen
 
             # Get proper length of matching using corrected readlength
-            Le = int(editDist)
-            Lm = len(alignedSeq) - Le
+            error_length = int(editDist)
+            match_length = len(alignedSeq) - error_length
 
             passDust = dust(alignedSeq) <= 2
             # Disallow clipping on both ends
             if cigarList[1] in 'HS' and cigarList[-1] in 'HS':
                 passDust = False
-            hlaRefIdMappedSet.add(readRefId)
-            if readName in dictReadName_ReadAligns:
-                dictReadName_ReadAligns[readName].addAlign(readRefId, passDust, mate, Lm, Le, readPos, readCIGAR)
-            else:
-                dictReadName_ReadAligns[readName] = readAligns(readRefId, passDust, mate, Lm, Le, readPos, readCIGAR)
 
-            if readRefId in hlaRefIdMappedNumDict:
-                hlaRefIdMappedNumDict[readRefId] += 1
+            if not passDust:
+                total_fail_dust += 1
             else:
-                hlaRefIdMappedNumDict[readRefId] = 1
+                total_pass_dust += 1
+
+            hlaRefIdMappedSet.add(readRefId)
+            if readName in readNames_to_aligns:
+                readNames_to_aligns[readName].addAlign(readRefId, passDust, mate, match_length, error_length, readPos, readCIGAR)
+            else:
+                readNames_to_aligns[readName] = readAligns(readRefId, passDust, mate, match_length, error_length, readPos, readCIGAR)
+
+            if readRefId in hlaRefID_to_totalMappedReads:
+                hlaRefID_to_totalMappedReads[readRefId] += 1
+            else:
+                hlaRefID_to_totalMappedReads[readRefId] = 1
 
 
         while pipe.poll() is None:
@@ -197,38 +204,49 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
         if pipe.returncode > 0:
             raise RuntimeError('Error parsing viral-aligned BAM files; aborting.')
 
-    # Check if all reads aligned to an HLA type have equal or better alignment to a type with more reads
-    filteredDictReadName_ReadAligns = {}
-    refIdList = sorted(hlaRefIdMappedSet)
-    for readName in dictReadName_ReadAligns.keys():
+    print(total_pass_dust / (total_fail_dust + total_pass_dust))
+
+    my_series = pd.Series(hlaRefID_to_totalMappedReads)
+    sorted_series = my_series.sort_values()
+
+    # Check if all reads aligned to an HLA reference have equal or better alignment to a reference with more reads
+    filteredReadNames_to_aligns = {}
+    hlaRefIDs = sorted(hlaRefIdMappedSet)
+    for readName in readNames_to_aligns.keys():
         isRedundant = True
-        ra = dictReadName_ReadAligns[readName]
-        for refId in refIdList:
-            if refId in ra.dictRefId_AlignInfo:
-                if not ra.isAmbig:
+        readAlign = readNames_to_aligns[readName]
+        for refId in hlaRefIDs:
+            if refId in readAlign.hlaRefID_to_alignInfo:
+                if not readAlign.ambig:
                     isRedundant = False
                     break
 
         if isRedundant:
-            rai = ra.dictRefId_AlignInfo
+            readAlign_info = readAlign.hlaRefID_to_alignInfo
             try:
-                ref_Lms = np.zeros(len(rai))
-                ref_Ids = list(map(lambda x: x, ra.dictRefId_AlignInfo.keys()))
+                # First we filter out any alignments which do not align to the maximum observed match length
 
-                if len(rai) > 0:
-                    first_key = next(iter(rai))
+                # initialize array of zeros
+                ref_match_lengths = np.zeros(len(readAlign_info))
+                ref_Ids = list(map(lambda x: x, readAlign.hlaRefID_to_alignInfo.keys()))
+
+                if len(readAlign_info) > 0:
+                    first_key = next(iter(readAlign_info))
                 else:
                     continue
 
-                if rai[first_key][0]:
-                    ref_Lms = np.add(ref_Lms, np.array(list(map(lambda x: rai[x][0].Lm if type(rai[x][0]) == alignInfo else 0, rai))))
-                if rai[first_key][1]:
-                    ref_Lms = np.add(ref_Lms, np.array(list(map(lambda x: rai[x][1].Lm if type(rai[x][1]) == alignInfo else 0, rai))))
+                # Add array of match lengths from first (and second, if available) reads
+                if readAlign_info[first_key][0]:
+                    ref_match_lengths = np.add(ref_match_lengths, np.array(list(map(lambda x: readAlign_info[x][0].match_length if type(readAlign_info[x][0]) == alignInfo else 0, readAlign_info))))
+                if readAlign_info[first_key][1]:
+                    ref_match_lengths = np.add(ref_match_lengths, np.array(list(map(lambda x: readAlign_info[x][1].match_length if type(readAlign_info[x][1]) == alignInfo else 0, readAlign_info))))
 
-                max_Lm_indices = np.where(ref_Lms == np.amax(ref_Lms))
-                refs_max_Lms = np.array(ref_Ids)[max_Lm_indices]
-                filtered_refs_mapped_nums = {x: hlaRefIdMappedNumDict[x] for x in hlaRefIdMappedNumDict if
-                                             x in refs_max_Lms}
+                max_match_length_indices = np.where(ref_match_lengths == np.amax(ref_match_lengths))
+                # filter alignments by match length
+                refs_max_match_lengths = np.array(ref_Ids)[max_match_length_indices]
+
+                # Now we filter alignments that map to a reference not having the maximum observed reads
+                filtered_refs_mapped_nums = {x: hlaRefID_to_totalMappedReads[x] for x in hlaRefID_to_totalMappedReads if x in refs_max_match_lengths}
                 ref_mapped_nums = np.array(list(filtered_refs_mapped_nums.values()))
                 ref_mapped_nums_ids = np.array(list(filtered_refs_mapped_nums.keys()))
 
@@ -241,72 +259,75 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
                 max_mapped_indices = np.where(ref_mapped_nums == np.amax(ref_mapped_nums))
                 max_ref_ids = np.array(ref_mapped_nums_ids)[max_mapped_indices]
 
-                readToRef_AlignInfo = {}
+                hlaRefID_to_alignInfo = {}
                 for max_ref_id in max_ref_ids:
-                    readToRef_AlignInfo[max_ref_id] = dictReadName_ReadAligns[readName].dictRefId_AlignInfo[max_ref_id]
+                    hlaRefID_to_alignInfo[max_ref_id] = readNames_to_aligns[readName].hlaRefID_to_alignInfo[max_ref_id]
 
-                isAmbig = dictReadName_ReadAligns[readName].isAmbig
-                passDust = dictReadName_ReadAligns[readName].passDust
+                ambig = readNames_to_aligns[readName].ambig
+                passDust = readNames_to_aligns[readName].passDust
 
-                filteredDictReadName_ReadAligns[readName] = readAligns(isAmbig, passDust, readToRef_AlignInfo)
+                filteredReadNames_to_aligns[readName] = readAligns(ambig, passDust, hlaRefID_to_alignInfo)
             except:
                 print(traceback.format_exc())
         else:
-            filteredDictReadName_ReadAligns[readName] = dictReadName_ReadAligns[readName]
+            filteredReadNames_to_aligns[readName] = readNames_to_aligns[readName]
 
     # Now process all reads/read pairs in dict to prepare output table and coverage maps
     # Each column of the outTable is a distinct, mapped read
     # First line of outTable is total mapped read #, followed by unique(U)/ambiguous(A) status of each read/pair
     # There follows 1 line for each HLA reference with at least one read mapped to it.  The first column is the HLA name,
-    # and each read column has the following format: [0/1 (whether maps to this reference), Lm (-1 if unmapped), ...
-    #  ... Le (-1 if unmapped), (comma-separated gene list)]
+    # and each read column has the following format: [0/1 (whether maps to this reference), match_length (-1 if unmapped), ...
+    #  ... error_length (-1 if unmapped), (comma-separated gene list)]
     # First line output
     mappedCount = 0
     outLine = ''
     nameLine = ''
-    dictReadName_ReadAligns = filteredDictReadName_ReadAligns
-    for readName in list(dictReadName_ReadAligns.keys()):
-        ra = dictReadName_ReadAligns[readName]
-        if filterLowComplex and not any(ra.passDust):
-            del dictReadName_ReadAligns[readName]
-        else:
+    readNames_to_aligns = filteredReadNames_to_aligns
+
+
+    filteredReadNames_to_aligns = {}
+    filtered_refs = set()
+
+    # Iterate over the original dictionary
+    for readName, readAlign in readNames_to_aligns.items():
+        # Check conditions for keeping the element
+        if not (filterLowComplex and not any(readAlign.passDust)):
             mappedCount += 1
-            if ra.isAmbig:
+            if readAlign.ambig:
                 outLine += '\tA'
             else:
                 outLine += '\tU'
             nameLine += '\t' + readName
+            # Add the element to the filtered dictionary
+            filteredReadNames_to_aligns[readName] = readAlign
+            filtered_refs.update(readAlign.hlaRefID_to_alignInfo.keys())
+
+    # Replace the original dictionary with the filtered dictionary
+    readNames_to_aligns = filteredReadNames_to_aligns
     outLine = str(mappedCount) + outLine
     outTable = [nameLine]
     outTable.append(outLine)
 
     # Rest of table
     if mappedCount:
-        for refId in hlaRefIdMappedSet:
+        for refId in filtered_refs:
+        # for refId in hlaRefIdMappedSet:
             # print(refId)
-            # print(hlaRefIdTypeDict[refId])
-            if defaultHlaRef:
-                if refId.split('.')[0][-3:] == 'REF':
-                    hlaName = refId.split('.')[0][:-3]
-                elif refId.split('.')[0][-2:] == 'nr':
-                    hlaName = refId.split('.')[0][:-2]
-                else:
-                    hlaName = refId.replace(' ', '')
-            else:
-                hlaName = refId.replace(' ', '')
-            outLine = hlaName + " (" + hlaRefIdTypeDict[refId] + ")"
-            for readName in dictReadName_ReadAligns:
-                ra = dictReadName_ReadAligns[readName]
-                if refId in ra.dictRefId_AlignInfo:
+            # print(hlaRefID_to_type[refId])
+            hlaName = refId.replace(' ', '')
+            outLine = hlaName + " (" + hlaRefID_to_type[refId] + ")"
+            for readName in readNames_to_aligns:
+                readAlign = readNames_to_aligns[readName]
+                if refId in readAlign.hlaRefID_to_alignInfo:
                     geneSet = set()
-                    Lm = 0
-                    Le = 0
+                    match_length = 0
+                    error_length = 0
 
                     # Update read coverage depths for this HLA type
                     if refId not in hlaRefIdCovDict:
-                        hlaRefIdCovDict[refId] = [0] * len(hlaRefIdSeqDict[refId])
+                        hlaRefIdCovDict[refId] = [0] * len(hlaRefID_to_seq[refId])
                     for mInd in range(2):
-                        mate = ra.dictRefId_AlignInfo[refId][mInd]
+                        mate = readAlign.hlaRefID_to_alignInfo[refId][mInd]
                         if mate:
                             cigarList = list(filter(None, re.split('(\D+)', mate.cigar)))
                             pos = mate.pos
@@ -319,7 +340,7 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
                                         except:
                                             print('readName: {}; refID: {}; startPos: {}; CIGAR: {}; pos: {}'.format(
                                                 readName, refId, mate.pos, mate.cigar, pos))
-                                            print('Len(hlaRefIdCovDict[refId]): {}'.format(len(hlaRefIdCovDict[refId])))
+                                            print('error_lengthn(hlaRefIdCovDict[refId]): {}'.format(len(hlaRefIdCovDict[refId])))
                                             raise
 
                                         # Mark any genes this read covers
@@ -337,10 +358,10 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
                                         pos = pos + 1
                                 # else :'IPSH'
 
-                            Lm += mate.Lm
-                            Le += mate.Le
+                            match_length += mate.match_length
+                            error_length += mate.error_length
                     genes = ','.join(sorted(geneSet))
-                    outLine += '\t' + '\t'.join(['1', str(Lm), str(Le), genes])
+                    outLine += '\t' + '\t'.join(['1', str(match_length), str(error_length), genes])
                 else:
                     outLine += '\t0\t-1\t-1\t'
             outTable.append(outLine)
@@ -353,16 +374,10 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
             cov = fig.add_subplot(111)
             cov.plot(list(range(len(hlaRefIdCovDict[refId]))), hlaRefIdCovDict[refId], 'k', lw=0.8)
             cov.set_ylabel('Read coverage', fontsize=14, color='black')
-            if defaultHlaRef:
-                if refId.split('.')[0][-3:] == 'REF':
-                    hlaName = refId.split('.')[0][:-3]
-                elif refId.split('.')[0][-2:] == 'nr':
-                    hlaName = refId.split('.')[0][:-2]
-                else:
-                    hlaName = refId.replace(' ', '')
-            else:
-                hlaName = refId.replace(' ', '')
-            plt.title(hlaName + " (" + hlaRefIdTypeDict[refId] + ")")
+
+            hlaName = refId.replace(' ', '')
+
+            plt.title(hlaName + " (" + hlaRefID_to_type[refId] + ")")
 
             if covMapYmax:
                 cov.set_ylim(top=covMapYmax)
@@ -424,11 +439,11 @@ def mapReads(hlaBams, defaultHlaRef=True, hlaRefPath='', annot='', filterLowComp
                                     cov.transData.inverted().transform(glabel.get_window_extent(renderer=r))[1][0])
                     gNameLast = gName
 
-            fig.savefig(outputName + '.' + hlaName + '.' + hlaRefIdTypeDict[refId] + '.cov.pdf', bbox_inches='tight',
+            fig.savefig(outputName + '.' + hlaName + '.' + hlaRefID_to_type[refId] + '.cov.pdf', bbox_inches='tight',
                         bbox_extra_artists=glines + glabels)
             plt.close(fig)
 
-    if not suppressOutputAndFigures:
+    # if not suppressOutputAndFigures:
         with open(outputName + '.mappedReads.tsv', 'w') as outFile:
             for line in outTable:
                 outFile.write(str(line) + '\n')
@@ -455,8 +470,7 @@ def main(argv):
     else:
         defaultHlaRef = False
 
-    outTable = mapReads(hlaBams, defaultHlaRef=defaultHlaRef, hlaRefPath=args.reference,
-                        filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
+    outTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
 
     with open(args.outname + '.mappedReads.tsv', 'w') as outFile:
         for line in outTable:

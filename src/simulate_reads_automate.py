@@ -15,6 +15,9 @@ import re
 # Path to the local directory open_docker.sh is in and that run_all_bash.sh writes to
 REFERENCE_DIR = os.path.join(os.getcwd(), 'reference')
 
+# Pull wgsim docker image
+subprocess.run(["docker", "pull", "pegi3s/wgsim"])
+
 def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=True):
     hla_gen_path = os.path.join(os.getcwd(), 'hla_gen.fasta')
     patient_filepath = "TCGA_HLA_alleles.tsv"
@@ -79,9 +82,6 @@ def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=Tru
             update_df["sample_01"].append(read01_path)
             update_df["sample_02"].append(read02_path)
 
-            print(update_df['sample_01'][i])
-            print(update_df['sample_02'][i])
-
             # Read in patient HLA data
             df = pd.read_csv(patient_filepath, sep="\t")
             df.drop(columns=["Reads", "Objective", "Aliquot", "Cancer"], inplace=True)
@@ -141,22 +141,16 @@ def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=Tru
 
     subprocess.run(["chmod", "700", run_all_script])
 
-    # Pull wgsim docker image
-    subprocess.run(["docker", "pull", "pegi3s/wgsim"])
-
     # Create a container for the docker image mounted to the reference directory
     # Inside this container, run the bash script that will simulate reads
     wgsim_command = ["docker", "run", "--rm", "-v", f"{REFERENCE_DIR}:/scripts", "pegi3s/wgsim:latest", "/bin/bash", "-c", "bash ./scripts/run_all_bash.sh"]
     result = subprocess.run(wgsim_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     if result.returncode == 0:
-        print("finished simulating reads")
-
         # clean up
         shutil.rmtree(bash_dir)
         os.remove(run_all_script)
     else:
-        print("failed to simulate reads")
         print(result.stdout)
         print(result.stderr)
         exit(1)
@@ -169,7 +163,7 @@ def simulate_masked_reads(num_to_generate, num_reads, error_rate=.01):
     masked_human_genome_bash_text = """
     #!/bin/bash
     REFDIR=[REF_DIR]
-    OUTDIR=[REF_DIR]/samples/[TRIAL_NUM]
+    OUTDIR=[REF_DIR]/reference/samples/[TRIAL_NUM]
 
     echo 'simulating data' && wgsim -e [ERROR_RATE] -r 0 -h  -N [NUM_READS] -1 151 -2 151 -d 500 $REFDIR/MaskedHumanGenome.fa $OUTDIR/sim.masked.reads_01.fq $OUTDIR/sim.masked.reads_02.fq || exit 1;
     cat $OUTDIR/sim.masked.reads_01.fq >> $OUTDIR/sim.HLA.reads_01.fq
@@ -184,16 +178,17 @@ def simulate_masked_reads(num_to_generate, num_reads, error_rate=.01):
     with open(run_all_script, "w") as run_all_bash_script:
         bash_dir = os.path.join(REFERENCE_DIR, "bash")
 
-        run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', '*')}\n")
-        run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', 'fastas', '*')}\n")
-        run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', 'bash', '*')}\n")
+        run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', 'reference', '*')}\n")
+        run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', 'reference', 'fastas', '*')}\n")
+        run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', 'reference', 'bash', '*')}\n")
 
+        sample_dirs = []
         for i in range(num_to_generate):
-            dir_name = f"trial_{len(os.listdir(os.path.join(REFERENCE_DIR, 'fastas')))}"
+            curr_sample = len(os.listdir(os.path.join(REFERENCE_DIR, 'fastas'))) - num_to_generate + i
+            dir_name = f"trial_{curr_sample}"
 
             samples_dir = os.path.join(REFERENCE_DIR, "samples", dir_name)
-            read01_path = os.path.join(samples_dir, "sim.HLA.reads_01.fq")
-            read02_path = os.path.join(samples_dir, "sim.HLA.reads_02.fq")
+            sample_dirs.append(samples_dir)
 
             if not os.path.isdir(samples_dir):
                 raise Exception(f"Directory {samples_dir} does not exist")
@@ -207,24 +202,30 @@ def simulate_masked_reads(num_to_generate, num_reads, error_rate=.01):
 
             # Because the docker mounts the reference directory to a new directory inside the container (called "scripts"),
             # the paths to the bash script are altered here
-            bash_path = os.path.join('scripts', 'bash', f"sim_reads_{dir_name}.sh")
+            bash_path = os.path.join('scripts', 'reference', 'bash', f"sim_reads_{dir_name}.sh")
             run_all_bash_script.write(f"bash {bash_path}" + "\n")
 
     subprocess.run(["chmod", "700", run_all_script])
 
     # Create a container for the docker image mounted to the reference directory
     # Inside this container, run the bash script that will simulate reads
-    wgsim_command = ["docker", "run", "--rm", "-v", f"{REFERENCE_DIR}:/scripts", "pegi3s/wgsim:latest", "/bin/bash", "-c", "bash ./scripts/run_all_bash.sh"]
+    wgsim_command = ["docker", "run", "--rm", "-v", f"{os.getcwd()}:/scripts", "pegi3s/wgsim:latest", "/bin/bash", "-c", "bash ./scripts/reference/run_all_bash.sh"]
     result = subprocess.run(wgsim_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     if result.returncode == 0:
-        print("finished simulating reads")
-
         # clean up
+        for samples_dir in sample_dirs:
+            if os.path.exists(os.path.join(samples_dir, 'sim.masked.reads_01.fq')):
+                os.remove(os.path.join(samples_dir, 'sim.masked.reads_01.fq'))
+            else:
+                print(os.path.join(samples_dir, 'sim.masked.reads_01.fq'), " doesn't exist")
+            if os.path.exists(os.path.join(samples_dir, 'sim.masked.reads_02.fq')):
+                os.remove(os.path.join(samples_dir, 'sim.masked.reads_02.fq'))
+            else:
+                print(os.path.join(samples_dir, 'sim.masked.reads_01.fq'), " doesn't exist")
         shutil.rmtree(bash_dir)
         os.remove(run_all_script)
     else:
-        print("failed to simulate reads")
         print(result.stdout)
         print(result.stderr)
         exit(1)
@@ -234,8 +235,12 @@ num_masked_reads = 1000000
 test_cases = [100000, 50000, 10000, 5000, 1500]
 num_per_test_case = 10
 
+ctr = 0
 for num_hla_reads in test_cases:
     num_human_reads = num_masked_reads - num_hla_reads
+    # if ctr == 0:
+    #     ctr += 1
+    #     continue
 
     # simulate hla reads using best case HLA alleles from TCGA data
     simulate_hla_reads(num_per_test_case // 2, num_hla_reads, best_case=True)

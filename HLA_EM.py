@@ -23,7 +23,10 @@ def prereqs():
     return ready
 
 
-def cmd(args, write=False, filepath=None):
+def cmd(args, write=False, filepath=None, verbose=False):
+    if not verbose:
+        args.append("> /dev/null")
+
     if(write==True):
         temp = sys.stdout
         sys.stdout = open(filepath, 'w')
@@ -86,11 +89,12 @@ def main():
     myparse.add_argument('-v', '--version', action='version', version='%(prog)s {}'.format(__version__))
 
     # TODO remove ??
-    myparse.add_argument('--outFilterScoreMinOverLreads', type=float, default=0.66)
-    myparse.add_argument('--outFilterMatchNminOverLreads', type=float, default=0.66)
-    myparse.add_argument('--outFilterMultimapNmaxs', type=float, default=50)
-    myparse.add_argument('--winAnchorMultimapNmaxs', type=float, default=50)
+    myparse.add_argument('--outFilterScoreMinOverLread', type=float, default=0.66)
+    myparse.add_argument('--outFilterMatchNminOverLread', type=float, default=0.66)
+    myparse.add_argument('--outFilterMultimapNmax', type=float, default=50)
+    myparse.add_argument('--winAnchorMultimapNmax', type=float, default=50)
 
+    myparse.add_argument('--shortcut', type=bool, default=True)
 
     # other required arguments
     requiredNamed = myparse.add_argument_group('required arguments')
@@ -98,8 +102,6 @@ def main():
 
     args = myparse.parse_args()
 
-    # TODO remove defaultHlaRef
-    defaultHlaRef = False
     if args.starHLA == 0:
         args.starHLA = args.reference + '_STAR'
         if not os.path.isdir(args.starHLA):
@@ -119,11 +121,11 @@ def main():
     if len(args.outname.split('/')) == 1:
         args.outname = os.path.join(os.getcwd(), args.outname)
 
-    reads_basename, reads_dir = os.path.split(args.reads1)
-    print(reads_dir)
+    reads_dir, reads_basename = os.path.split(args.reads1)
+    reads_dir += "/out"
 
     if not os.path.isdir(args.outname):
-        cmd(["mkdir", args.outname])
+        os.makedirs(args.outname)
     base_outname = os.path.basename(args.outname)
     outname = os.path.join(args.outname, base_outname)
 
@@ -141,10 +143,18 @@ def main():
     if args.reads1.endswith(".gz"):
         argsHumanAlignSTAR.append("--readFilesCommand zcat")
     if args.reads2 == "not supplied":
-        print("Aligning reads to human genome")
-        cmd(argsHumanAlignSTAR + ["--readFilesIn {}".format(args.reads1)])
+        # TODO remove shortcut
+        if not args.shortcut or not os.path.exists(reads_dir + '.Unmapped.out.mate1.fq'):
+            print("Aligning reads to human genome")
+            cmd(argsHumanAlignSTAR + ["--readFilesIn {}".format(args.reads1)])
 
-        with open('{}.Log.final.out'.format(reads_dir),'r') as logFile:
+            os.rename(reads_dir + '.Unmapped.out.mate1', reads_dir + '.Unmapped.out.mate1.fq')
+            os.rename(reads_dir + '.Log.final.out', outname + ".Log.final.out")
+        else:
+            print('taking shortcut\n')
+
+
+        with open('{}.Log.final.out'.format(outname),'r') as logFile:
             for line in logFile:
                 line = line.strip()
                 if line.startswith('Number of input reads'):
@@ -155,25 +165,35 @@ def main():
         print("Aligning reads to HLA genomes")
         cmd(["STAR", 
              "--genomeDir {path}".format(path=args.starHLA),
-             "--readFilesIn {sampleName}.Unmapped.out.mate1.fastq".format(sampleName=reads_dir),
+             "--readFilesIn {sampleName}.Unmapped.out.mate1.fq".format(sampleName=reads_dir),
              "--runThreadN {}".format(args.threads),
              "--twopassMode Basic",
              "--outSAMtype BAM Unsorted",
              "--outSAMattributes NH HI NM MD AS XS",
-	     "--outFilterScoreMinOverLread 0",
-	     "--outFilterMatchNminOverLread 0",
-	     "--outFilterMatchNmin 0",
+
+             "--outFilterScoreMinOverLread 0",
+             "--outFilterMatchNminOverLread 0",
+             "--outFilterMatchNmin 0",
              "--outFilterMultimapNmax 999",
              "--outFilterMismatchNoverLmax 0.08",
-	     "--winAnchorMultimapNmax 1000",
+             "--winAnchorMultimapNmax 1000",
+
              "--outFileNamePrefix {}.1.".format(outname)])
         hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
 
     else:
-        print("Aligning reads to human genome")
-        cmd(argsHumanAlignSTAR + ["--readFilesIn {} {}".format(args.reads1, args.reads2)])
+        if not args.shortcut or not os.path.exists(reads_dir + '.Unmapped.out.mate1.fq'):
+            print("Aligning reads to human genome")
+            cmd(argsHumanAlignSTAR + ["--readFilesIn {} {}".format(args.reads1, args.reads2)])
 
-        with open('{}.Log.final.out'.format(reads_dir),'r') as logFile:
+            os.rename(reads_dir + '.Unmapped.out.mate1', reads_dir + '.Unmapped.out.mate1.fq')
+            os.rename(reads_dir + '.Unmapped.out.mate2', reads_dir + '.Unmapped.out.mate2.fq')
+
+            os.rename(reads_dir + '.Log.final.out', outname + ".Log.final.out")
+        else:
+            print('taking shortcut\n')
+
+        with open('{}.Log.final.out'.format(outname),'r') as logFile:
             for line in logFile:
                 line = line.strip()
                 if line.startswith('Number of input reads'):
@@ -186,40 +206,62 @@ def main():
         print("Aligning reads to HLA genomes")
         cmd(["STAR", 
              "--genomeDir {path}".format(path=args.starHLA),
-             "--readFilesIn {sampleName}/unmapped_reads1.fastq".format(sampleName=reads_dir),
+             "--readFilesIn {sampleName}.Unmapped.out.mate1.fq".format(sampleName=reads_dir),
              "--runThreadN {}".format(args.threads),
              "--twopassMode Basic",
              "--outSAMtype BAM Unsorted",
              "--outSAMattributes NH HI NM MD AS XS",
+
              "--outFilterMultimapNmax 999",
              "--outFilterMismatchNmax 999",
              "--outFilterMismatchNoverLmax 0.08",
+
+             f'--outFilterScoreMinOverLread {args.outFilterScoreMinOverLread}',
+             f'--outFilterMatchNminOverLread {args.outFilterMatchNminOverLread}',
+             f'--outFilterMultimapNmax {args.outFilterMultimapNmax}',
+             f'--winAnchorMultimapNmax {args.winAnchorMultimapNmax}',
+
              "--outFileNamePrefix {}.1.".format(outname)])
         hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
         cmd(["STAR", 
              "--genomeDir {path}".format(path=args.starHLA),
-             "--readFilesIn {sampleName}/unmapped_reads2.fastq".format(sampleName=reads_dir),
+             "--readFilesIn {sampleName}.Unmapped.out.mate2.fq".format(sampleName=reads_dir),
              "--runThreadN {}".format(args.threads),
              "--twopassMode Basic",
              "--outSAMtype BAM Unsorted",
              "--outSAMattributes NH HI NM MD AS XS",
+
              "--outFilterMultimapNmax 999",
              "--outFilterMismatchNmax 999",
              "--outFilterMismatchNoverLmax 0.08",
+
+             f'--outFilterScoreMinOverLread {args.outFilterScoreMinOverLread}',
+             f'--outFilterMatchNminOverLread {args.outFilterMatchNminOverLread}',
+             f'--outFilterMultimapNmax {args.outFilterMultimapNmax}',
+             f'--winAnchorMultimapNmax {args.winAnchorMultimapNmax}',
+
              "--outFileNamePrefix {}.2.".format(outname)])
         hlaBams.append('{}.2.Aligned.out.bam'.format(outname))
 
     if not args.keepint:
-        os.remove('{}.Log.progress.out'.format(outname))
-        os.remove('{}.Log.final.out'.format(outname))
-        os.remove('{}.Log.out'.format(outname))
-        os.remove('{}.SJ.out.tab'.format(outname))
-        os.remove('{}.Chimeric.out.junction'.format(outname))
-        os.remove('{}.Aligned.out.bam'.format(outname))
+        # remove extra files from reads_dir
+        dir_to_clean = os.path.split(reads_dir)[0]
+        for filename in os.listdir(dir_to_clean):
+            if os.path.isdir(os.path.join(dir_to_clean, filename)):
+                os.removedirs(os.path.join(dir_to_clean, filename))
+            elif not filename.endswith(".fq"):
+                os.remove(os.path.join(dir_to_clean, filename))
+
+        # os.remove('{}.Log.progress.out'.format(outname))
+        # os.remove('{}.Log.final.out'.format(outname))
+        # os.remove('{}.Log.out'.format(outname))
+        # os.remove('{}.SJ.out.tab'.format(outname))
+        # os.remove('{}.Chimeric.out.junction'.format(outname))
+        # os.remove('{}.Aligned.out.bam'.format(outname))
         # os.remove('{}.Unmapped.out.mate1'.format(outname))
 
         os.remove('{}.1.Log.progress.out'.format(outname))
-        os.remove('{}.1.Log.final.out'.format(outname))
+        # os.remove('{}.1.Log.final.out'.format(outname))
         os.remove('{}.1.Log.out'.format(outname))
         os.remove('{}.1.SJ.out.tab'.format(outname))
         shutil.rmtree('{}.1._STARgenome'.format(outname))
@@ -227,14 +269,16 @@ def main():
         if args.reads2 != "not supplied":
             # os.remove('{}.Unmapped.out.mate2'.format(outname))
             os.remove('{}.2.Log.progress.out'.format(outname))
-            os.remove('{}.2.Log.final.out'.format(outname))
+            # os.remove('{}.2.Log.final.out'.format(outname))
             os.remove('{}.2.Log.out'.format(outname))
             os.remove('{}.2.SJ.out.tab'.format(outname))
             shutil.rmtree('{}.2._STARgenome'.format(outname))
             shutil.rmtree('{}.2._STARpass1'.format(outname))
 
     print("Creating read table", flush=True)
-    readsTable = mapReads(hlaBams, defaultHlaRef=defaultHlaRef, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation)
+    print(hlaBams, args.reference, not(args.disabledust), outname, args.annotation)
+
+    readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation)
 
     # save readsTable to file
     with open(outname + ".readsTable.tsv", "w") as f:

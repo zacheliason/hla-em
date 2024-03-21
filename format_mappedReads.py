@@ -8,7 +8,41 @@ def unique(list1):
     x = np.array(list1)
     return list(np.unique(x))
 
-path = "/Users/zacheliason/Documents/Work/zhang/2024/new/output/output.readsTable.tsv"
+path = "/Users/zeliason/Desktop/hla-em/src/hlaType.mappedReads.tsv"
+if os.path.exists(path.replace(".tsv", "_formatted.tsv")):
+    ndf = pd.read_csv(path.replace(".tsv", "_formatted.tsv"), sep="\t")
+    df = ndf.iloc[1:]
+
+    # Drop columns starting with 'Unnamed'
+    df = df.loc[:, ~df.columns.str.startswith('Unnamed')]
+
+    df.index = df['Gene']
+    df = df.drop(columns=['Gene'])
+    df = df.astype(float)
+
+
+    sum_by_column = df.sum(axis=0)
+
+    # Series summing the DataFrame by row
+    sum_by_row = df.sum(axis=1)
+
+    sum_by_row = sum_by_row.sort_values()
+    sum_by_column = sum_by_column.sort_values()
+
+    partial_string = "00043"
+
+    matching_indices = sum_by_row.index.str.startswith(partial_string)
+
+    # Use boolean indexing to extract the matching values
+    matching_values = sum_by_row[matching_indices]
+
+    non_zero_series = sum_by_row[sum_by_row != 0]
+
+
+
+    print()
+
+
 
 lines = []
 with open(path) as table:
