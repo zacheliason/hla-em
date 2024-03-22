@@ -252,14 +252,19 @@ def filter_fasta(input_file, output_file):
 		alleles = re.findall(pattern, header)
 		return alleles
 
+	total_alleles = 0
+	alleles_kept = 0
+
 	with open(input_file, 'r') as infile, open(output_file, 'w') as outfile:
 		sequence = ''
 		for line in infile:
 			line = line.strip()
 			if line.startswith('>'):
 				if sequence:
+					total_alleles += 1
 					alleles = extract_abc_alleles(header)
 					if alleles:
+						alleles_kept += 1
 						outfile.write('>%s\n%s\n' % (header, sequence))
 					else:
 						print()
@@ -271,6 +276,8 @@ def filter_fasta(input_file, output_file):
 			alleles = extract_abc_alleles(header)
 			if alleles:
 				outfile.write('>%s\n%s\n' % (' '.join(alleles), sequence))
+
+	print(f"filtered {alleles_kept}/{total_alleles} alleles")
 
 
 def score_output(output_dir, alleles_path, tool="HLA_EM"):
