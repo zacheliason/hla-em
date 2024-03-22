@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
+from src.ManipulateFiles import clean_output, filter_fasta, score_output
 from src.CreateMappedReadTable import mapReads
-from src.clean_results import clean_output
 from src.EMstep import EmAlgo
 from whichcraft import which
 import subprocess as subp
@@ -55,6 +55,22 @@ def cmd(args, write=False, filepath=None, verbose=False):
 
     return
 
+
+def filterReferenceFasta(genomeFastaFiles):
+    directory, filename = os.path.split(genomeFastaFiles)
+    base_name, extension = os.path.splitext(filename)
+    if extension.lower() in ('.fa', '.fasta'):
+        filteredGenomeFastaFiles = f"{base_name}_ABC{extension}"
+    else:
+        print(f"The file '{filename}' does not have a .fa or .fasta extension.")
+
+    filter_fasta(input_file=genomeFastaFiles, output_file=filteredGenomeFastaFiles)
+
+    genomeDir = filteredGenomeFastaFiles + "_STAR"
+
+    return genomeDir, filteredGenomeFastaFiles
+
+
 def indexReferenceGenes(genomeDir, genomeFastaFiles, genomeSAindexNbases, outname):
     print("Indexing reference genome", flush=True)
     cmd(["STAR",
@@ -88,6 +104,7 @@ def main():
     myparse.add_argument('-k', '--keepint', action='store_true', help="keep intermediate files")
     myparse.add_argument('-v', '--version', action='version', version='%(prog)s {}'.format(__version__))
 
+    # TODO remove shortcut
     myparse.add_argument('--shortcut', action='store_true', default=False)
 
     # other required arguments
@@ -97,7 +114,8 @@ def main():
     args = myparse.parse_args()
 
     if args.starHLA == 0:
-        args.starHLA = args.reference + '_STAR'
+        args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
+
         if not os.path.isdir(args.starHLA):
             indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
