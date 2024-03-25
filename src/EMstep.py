@@ -162,8 +162,6 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
                 types.append(hlaName)
                 typesAll.append(hlaName)
 
-                print('HLAtype\tMappedReads\tMappedProportion\tMLE_Reads\tMLE_Probability')
-
                 HLA_reference = {
                     'HLAtype': hlaName,
                     'MappedReads': hla.readNum,

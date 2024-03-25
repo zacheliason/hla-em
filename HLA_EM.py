@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import re
 
 from src.ManipulateFiles import clean_output, filter_fasta, score_output
 from src.CreateMappedReadTable import mapReads
@@ -26,13 +27,14 @@ def prereqs():
     return ready
 
 
-def cmd(args, write=False, filepath=None, verbose=False):
+
+def cmd(args, write=False, filepath=None, verbose=True):
     if(write==True):
         temp = sys.stdout
         sys.stdout = open(filepath, 'w')
 
         try:
-            subp.check_call(args, stdout=subp.DEVNULL) # stdout=sys.stdout,
+            subp.check_call(args, stdout=subp.DEVNULL if verbose else sys.stdout)
         except subp.CalledProcessError as e:
             print("Subprocess error with code: " + str(e.returncode))
             sys.exit(e.returncode)
@@ -45,7 +47,7 @@ def cmd(args, write=False, filepath=None, verbose=False):
     else:
         try:
             print(' '.join(args))
-            subp.check_call(args, stdout=subp.DEVNULL) # stdout=sys.stdout,
+            subp.check_call(args, stdout=subp.DEVNULL if verbose else sys.stdout)
         except subp.CalledProcessError as e:
             print("Subprocess error with code: " + str(e.returncode))
             sys.exit(e.returncode)
@@ -60,11 +62,12 @@ def filterReferenceFasta(genomeFastaFiles):
     directory, filename = os.path.split(genomeFastaFiles)
     base_name, extension = os.path.splitext(filename)
     if extension.lower() in ('.fa', '.fasta'):
-        filteredGenomeFastaFiles = f"{base_name}_ABC{extension}"
+        filteredGenomeFastaFiles = os.path.join(directory, f"{base_name}_ABC{extension}")
     else:
         print(f"The file '{filename}' does not have a .fa or .fasta extension.")
 
-    filter_fasta(input_file=genomeFastaFiles, output_file=filteredGenomeFastaFiles)
+    if not os.path.exists(filteredGenomeFastaFiles):
+        filter_fasta(input_file=genomeFastaFiles, output_file=filteredGenomeFastaFiles)
 
     genomeDir = filteredGenomeFastaFiles + "_STAR"
 
@@ -113,22 +116,6 @@ def main():
 
     args = myparse.parse_args()
 
-    if args.starHLA == 0:
-        args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
-
-        if not os.path.isdir(args.starHLA):
-            indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
-
-    if args.starHLA == 0:
-        print('Please provide the path to a folder of STAR indices based on your specified HLA genome using the --starHLA argument')
-        sys.exit(1)
-
-    if args.threads < 1:
-        args.threads = 1
-
-    if not prereqs():
-        sys.exit(1)
-
     if len(args.outname.split('/')) == 1:
         args.outname = os.path.join(os.getcwd(), args.outname)
 
@@ -139,6 +126,18 @@ def main():
         os.makedirs(args.outname)
     base_outname = os.path.basename(args.outname)
     outname = os.path.join(args.outname, base_outname)
+
+    args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
+
+    if not os.path.isdir(args.starHLA):
+        indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
+
+    if args.threads < 1:
+        args.threads = 1
+
+    if not prereqs():
+        sys.exit(1)
+
 
     allReadsNum = -1
     hlaBams = []
@@ -153,6 +152,9 @@ def main():
              "--outFileNamePrefix {}.".format(reads_dir)]
     if args.reads1.endswith(".gz"):
         argsHumanAlignSTAR.append("--readFilesCommand zcat")
+
+    print(args)
+
     if args.reads2 == "not supplied":
         # TODO remove shortcut
         if not args.shortcut or not os.path.exists(reads_dir + '.Unmapped.out.mate1.fq'):
@@ -166,11 +168,19 @@ def main():
 
 
         with open('{}.Log.final.out'.format(outname),'r') as logFile:
+            total_pattern = r"Number of input reads \|	(\d+)"
+            unmapped_pattern = r"Number of reads unmapped: ((too short)|(other)) \|\s+(\d+)"
+
+            logFileContents = logFile.read()
+
+            total_reads = int(re.findall(total_pattern, logFileContents)[0])
+            unmapped_reads = sum([int(x[3]) for x in re.findall(unmapped_pattern, logFileContents)])
+
             for line in logFile:
                 line = line.strip()
                 if line.startswith('Number of input reads'):
                     allReadsNum = int(line.split()[-1])
-                    print("Total reads: {}".format(allReadsNum))
+                    print(f"Unmapped reads: {unmapped_reads}, Total_reads: {total_reads}")
                     break
 
         print("Aligning reads to HLA genomes")

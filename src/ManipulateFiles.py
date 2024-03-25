@@ -248,7 +248,7 @@ def filter_fasta(input_file, output_file):
 		Extract A, B, and C alleles from the header line.
 		Returns a list of alleles or an empty list if no A, B, or C alleles are found.
 		"""
-		pattern = r"[ABC]\*\d+(?::\d+){0,3}"
+		pattern = r"\s[ABC]\*\d+(?::\d+){0,3}"
 		alleles = re.findall(pattern, header)
 		return alleles
 
@@ -266,8 +266,6 @@ def filter_fasta(input_file, output_file):
 					if alleles:
 						alleles_kept += 1
 						outfile.write('>%s\n%s\n' % (header, sequence))
-					else:
-						print()
 				sequence = ''
 				header = line[1:]
 			else:
@@ -319,3 +317,8 @@ def score_output(output_dir, alleles_path, tool="HLA_EM"):
 		scores.append(score_allele_lists(hla_code_obs, hla_code_exp))
 
 	return pd.DataFrame(scores)
+
+
+# scores = score_output("/Users/zeliason/Desktop/hla-em/output", "/Users/zeliason/Desktop/hla-em/reference/allele_record.csv")
+#
+# print()
