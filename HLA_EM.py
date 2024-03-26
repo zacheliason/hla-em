@@ -173,33 +173,38 @@ def main():
 
             logFileContents = logFile.read()
 
-            total_reads = int(re.findall(total_pattern, logFileContents)[0])
-            unmapped_reads = sum([int(x[3]) for x in re.findall(unmapped_pattern, logFileContents)])
+            try:
+                total_reads = int(re.findall(total_pattern, logFileContents)[0])
+                unmapped_reads = sum([int(x[3]) for x in re.findall(unmapped_pattern, logFileContents)])
+            except:
+                print("ERROR!!!!")
+                raise RuntimeError('allReadsNum NOT FOUND!!!!!!!!!!')
 
-            for line in logFile:
-                line = line.strip()
-                if line.startswith('Number of input reads'):
-                    allReadsNum = int(line.split()[-1])
-                    print(f"Unmapped reads: {unmapped_reads}, Total_reads: {total_reads}")
-                    break
+            print(f"{unmapped_reads} reads unmapped out of {total_reads} reads total.")
 
-        print("Aligning reads to HLA genomes")
-        cmd(["STAR", 
-             "--genomeDir {path}".format(path=args.starHLA),
-             "--readFilesIn {sampleName}.Unmapped.out.mate1.fq".format(sampleName=reads_dir),
-             "--runThreadN {}".format(args.threads),
-             "--twopassMode Basic",
-             "--outSAMtype BAM Unsorted",
-             "--outSAMattributes NH HI NM MD AS XS",
+            allReadsNum = total_reads
 
-             "--outFilterScoreMinOverLread 0",
-             "--outFilterMatchNminOverLread 0",
-             "--outFilterMatchNmin 0",
-             "--outFilterMultimapNmax 999",
-             "--outFilterMismatchNoverLmax 0.08",
-             "--winAnchorMultimapNmax 1000",
+        if not args.shortcut or not os.path.exists('{}.1.Aligned.out.bam'.format(outname)):
+            print("Aligning reads to HLA genomes")
+            cmd(["STAR",
+                 "--genomeDir {path}".format(path=args.starHLA),
+                 "--readFilesIn {sampleName}.Unmapped.out.mate1.fq".format(sampleName=reads_dir),
+                 "--runThreadN {}".format(args.threads),
+                 "--twopassMode Basic",
+                 "--outSAMtype BAM Unsorted",
+                 "--outSAMattributes NH HI NM MD AS XS",
 
-             "--outFileNamePrefix {}.1.".format(outname)])
+                 "--outFilterScoreMinOverLread 0",
+                 "--outFilterMatchNminOverLread 0",
+                 "--outFilterMatchNmin 0",
+                 "--outFilterMultimapNmax 999",
+                 "--outFilterMismatchNoverLmax 0.08",
+                 "--winAnchorMultimapNmax 1000",
+
+                 "--outFileNamePrefix {}.1.".format(outname)])
+        else:
+            print("took second shortcut")
+
         hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
 
     else:

@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!rusr/bin/env python
 
 #from __future__ import print_function
 import matplotlib.pyplot as plt
@@ -53,6 +53,7 @@ def natural_order(l):
 
 
 def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', printResult=True, suppressOutputAndFigures=False):
+    iterOut = None
     mappedReads = []
     totalReads = 0
     uniqReads = int(readsTable[1].split('\t')[0])
@@ -88,6 +89,8 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
             while not converged:
                 steps+=1
                 if(steps>maxSteps):
+                    print(f'Iter: {ni}, EM algorithm failed to converge after {maxSteps} steps.')
+                    break
                     raise RuntimeError('EM algorithm failed to converge after {} steps; aborting.'.format(maxSteps))
                     
                 # E step
@@ -132,7 +135,9 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
                                 l +=  w[i,j] * math.log(sys.float_info.min)
                 if (l-l0) < conVal:
                     converged=True
-                    if ni==0 or l>lOut:
+                    if ni==0 or l>lOut or iterOut is None:
+                        if iterOut is None and ni!=0:
+                            print(f'  found {ni} was better')
                         lOut = l
                         errOut = err
                         phiOut = phi
@@ -212,11 +217,13 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
         save_mr(mappedReads, hlas=typesAll, name=outputName + 'before_em.csv')
         save_mr(mappedReads, hlas=types, name=outputName + 'after_em.csv')
 
+        print('Converged to < {:.1e} in {:d} iterations'.format(conVal, stepsOut))
+
         if output:
 
             df = pd.DataFrame(output_lines)
             df = df.sort_values('MLE_Probability', ascending=False)
-            df.to_csv(outputName + "cleaner_pandas_output.tsv", sep='\t', index=False)
+            df.to_csv(outputName + ".results.tsv", sep='\t', index=False)
 
             lOrd = natural_order(types)
             lOrdAll = natural_order(typesAll)
@@ -232,15 +239,15 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
                     for i in lOrd:
                         print(output[i])
 
-                with open(outputName+'.results.tsv','w') as fOut:
-                    # fOut.write('Converged to < {:.1e} in {:d} iterations\n'.format(conVal, stepsOut))
-                    # fOut.write('err\t{:.5f}\n'.format(errOut))
-                    fOut.write('HLAtype\tMappedReads\tMappedProportion\tMLE_Reads\tMLE_Probability\n')
-                    # for i in lOrd:
-                    #     fOut.write(output[i]+'\n')
-
-                    for output_line in sorted_lines:
-                        fOut.write(output_line + "\n")
+                # with open(outputName+'.results.tsv','w') as fOut:
+                #     # fOut.write('Converged to < {:.1e} in {:d} iterations\n'.format(conVal, stepsOut))
+                #     # fOut.write('err\t{:.5f}\n'.format(errOut))
+                #     fOut.write('HLAtype\tMappedReads\tMappedProportion\tMLE_Reads\tMLE_Probability\n')
+                #     # for i in lOrd:
+                #     #     fOut.write(output[i]+'\n')
+                #
+                #     for output_line in sorted_lines:
+                #         fOut.write(output_line + "\n")
 
                 # Write out read counts table
                 geneNamesList = sorted(geneNamesSet)

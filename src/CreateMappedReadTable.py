@@ -204,7 +204,7 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
         if pipe.returncode > 0:
             raise RuntimeError('Error parsing viral-aligned BAM files; aborting.')
 
-    print(total_pass_dust / (total_fail_dust + total_pass_dust))
+    # print(total_pass_dust / (total_fail_dust + total_pass_dust))
 
     # Check if all reads aligned to an HLA reference have equal or better alignment to a reference with more reads
     filteredReadNames_to_aligns = {}

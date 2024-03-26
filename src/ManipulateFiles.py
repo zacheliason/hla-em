@@ -46,6 +46,39 @@ def group_by_protein(df):
 	return grouped[['HLAtype', 'HLA_type', 'HLA_code', 'HLAletter', 'MappedReads', 'MappedProportion', 'MLE_Reads', 'MLE_Probability']]
 
 
+import pandas as pd
+
+
+def replace_smaller_allele(df):
+	ratio_threshold = 9
+	# Group the alleles by their "HLAletter" values
+	allele_groups = df.groupby("HLAletter")
+
+	for group_name, group in allele_groups:
+		# If the group has more than one allele
+		if len(group) > 1:
+			# Iterate over the allele pairs in the group
+			for i in range(0, len(group), 2):
+				if i + 1 < len(group):
+					allele1 = group.iloc[i]
+					allele2 = group.iloc[i + 1]
+
+					# Calculate the ratio between the MLE_Probability values
+					ratio = allele1['MLE_Probability'] / allele2['MLE_Probability']
+
+					# If the ratio is greater than 10, replace the smaller row
+					if ratio > ratio_threshold:
+						print(df.loc[allele1.name]['MLE_Probability'])
+						allele1['MLE_Probability'] = allele1['MLE_Probability'] / 2
+						df.loc[allele1.name, 'MLE_Probability'] = allele1['MLE_Probability']
+						df.loc[allele2.name] = allele1
+					elif ratio < 1 / ratio_threshold:
+						df.loc[allele1.name] = allele2
+
+	return df
+
+
+
 def clean_output(path, group_by_p=True):
 	# Step 1: Read the TSV file into a DataFrame
 	df = pd.read_csv(path, sep='\t')
@@ -61,7 +94,6 @@ def clean_output(path, group_by_p=True):
 
 
 	df = df[df['HLAletter'].isin(['A', 'B', 'C'])]
-
 
 	# Step 3: Filter out alleles based on a threshold probability
 	threshold = 0.001  # Adjust the threshold as needed
@@ -98,11 +130,16 @@ def clean_output(path, group_by_p=True):
 
 	hla_prediction_df = pd.concat(hla_predictions)
 	hla_prediction_df.index = hla_prediction_df['HLAtype']
+
+	hla_prediction_df = replace_smaller_allele(hla_prediction_df)
+
 	hla_prediction_df = hla_prediction_df.drop(columns=['HLAletter', "HLA_code", "HLA_type", "HLAtype"])
 
 	output_dir, _ = os.path.split(path)
 
 	hla_prediction_df.to_csv(os.path.join(output_dir, "final_predictions.csv"), index=True)
+
+	return hla_prediction_df
 
 
 def calculate_match_percentage(obs, exp):
@@ -343,13 +380,21 @@ def score_output(output_dir, alleles_path, tool="HLA_EM"):
 				final_predictions_path = [os.path.join(trial_dir, x) for x in os.listdir(trial_dir) if x.endswith("final_predictions.csv")]
 				if len(final_predictions_path) == 0:
 					print(f"Error: {trial_dir} does not contain a final_predictions.csv file")
-					continue
+					raise RuntimeErorr("wtf just happened??/")
 
 			if len(final_predictions_path) != 1:
 				print(f"Error: {trial_dir} does not contain exactly one final_predictions.csv file")
 				continue
 
 			else:
+				# TODO remove
+
+				try:
+					results_path = [os.path.join(trial_dir, x) for x in trial_results if x.endswith("results.tsv")][0]
+					hla_prediction_df = clean_output(results_path)
+				except:
+					print(f'failed on {trial_num}')
+
 				final_predictions_path = final_predictions_path[0]
 
 			hla_obs = pd.read_csv(final_predictions_path)['HLAtype'].values.tolist()
@@ -367,9 +412,10 @@ def score_output(output_dir, alleles_path, tool="HLA_EM"):
 	return pd.DataFrame(scores)
 
 
-# scores = score_output("/Users/zacheliason/Downloads/output_zipped_copy/output_single", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
-# # print average scores
-# print(scores[['allele_group_score', 'protein_score', 'coding_score', 'noncoding_score']].mean())
+scores = score_output("/Users/zeliason/Desktop/hla-em/output", "/Users/zeliason/Desktop/hla-em/Reference/allele_record.csv")
+# print average scores
+print(scores[['allele_group_score', 'protein_score', 'coding_score', 'noncoding_score']].mean())
+print()
 
 
 

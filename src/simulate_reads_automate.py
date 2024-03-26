@@ -13,14 +13,15 @@ import re
 
 
 # Path to the local directory open_docker.sh is in and that run_all_bash.sh writes to
-REFERENCE_DIR = os.path.join(os.getcwd(), 'reference')
+PARENT_DIR = os.path.join(os.path.dirname(os.getcwd()))
+REFERENCE_DIR = os.path.join(PARENT_DIR, 'reference')
 
 # Pull wgsim docker image
-subprocess.run(["docker", "pull", "pegi3s/wgsim"])
+# subprocess.run(["docker", "pull", "pegi3s/wgsim"])
 
 def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=True):
-    hla_gen_path = os.path.join(os.getcwd(), 'hla_gen.fasta')
-    patient_filepath = "TCGA_HLA_alleles.tsv"
+    hla_gen_path = os.path.join(PARENT_DIR, 'hla_gen.fasta')
+    patient_filepath = os.path.join(REFERENCE_DIR, "TCGA_HLA_alleles.tsv")
     allele_record_filepath = os.path.join(REFERENCE_DIR, 'allele_record.csv')
     run_all_script = os.path.join(REFERENCE_DIR, "run_all_bash.sh")
 
@@ -231,20 +232,37 @@ def simulate_masked_reads(num_to_generate, num_reads, error_rate=.01):
         exit(1)
 
 
-num_masked_reads = 1000000
-test_cases = [100000, 50000, 10000, 5000, 1500]
-num_per_test_case = 10
+def create_large_tests():
+    num_masked_reads = 1000000
+    test_cases = [100000, 50000, 10000, 5000, 1500]
+    num_per_test_case = 10
 
-ctr = 0
-for num_hla_reads in test_cases:
-    num_human_reads = num_masked_reads - num_hla_reads
-    # if ctr == 0:
-    #     ctr += 1
-    #     continue
+    ctr = 0
+    for num_hla_reads in test_cases:
+        num_human_reads = num_masked_reads - num_hla_reads
+        # if ctr == 0:
+        #     ctr += 1
+        #     continue
+
+        # simulate hla reads using best case HLA alleles from TCGA data
+        simulate_hla_reads(num_per_test_case // 2, num_hla_reads, best_case=True)
+        # simulate hla reads using random HLA alleles from TCGA data
+        simulate_hla_reads(num_per_test_case // 2, num_hla_reads, best_case=False)
+        # simulate reads from the rest of the genome and concatenate them with the hla reads
+        simulate_masked_reads(num_per_test_case, num_human_reads)
+
+def create_dummy_tests():
+    num_per_test_case = 10
+    num_hla_reads = 1500
+
+    current_path = os.environ.get("PATH", "")
+    home_dir = os.path.expanduser("~")
+    new_path = f"{current_path}:{home_dir}/.docker/bin"
+    os.environ['PATH'] = new_path
 
     # simulate hla reads using best case HLA alleles from TCGA data
-    simulate_hla_reads(num_per_test_case // 2, num_hla_reads, best_case=True)
+    simulate_hla_reads(num_per_test_case, num_hla_reads, best_case=True)
     # simulate hla reads using random HLA alleles from TCGA data
-    simulate_hla_reads(num_per_test_case // 2, num_hla_reads, best_case=False)
-    # simulate reads from the rest of the genome and concatenate them with the hla reads
-    simulate_masked_reads(num_per_test_case, num_human_reads)
+    simulate_hla_reads(num_per_test_case, num_hla_reads, best_case=False)
+
+create_dummy_tests()
