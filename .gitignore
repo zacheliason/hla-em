@@ -8,10 +8,13 @@
 *.pyc
 *.fq
 *.fastq
+*.json
+*.csv
 
-reference/*
+reference*
 
-output/*
+output*
+*output*
 src/output/*
 src/output
 src/EnsembleGenome_STAR_without_scaffolds

@@ -1,7 +1,6 @@
-#!/usr/bin/env python
 import re
 
-from src.ManipulateFiles import clean_output, filter_fasta, score_output
+from src.ManipulateFiles import predict_genotype_from_MLE, filter_fasta, score_output
 from src.CreateMappedReadTable import mapReads
 from src.EMstep import EmAlgo
 from whichcraft import which
@@ -13,7 +12,7 @@ import os
 
 __version__ = "1.0.2"
 
-# TODO remove
+# # TODO remove
 os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
 
 def prereqs():
@@ -97,7 +96,7 @@ def main():
     # options
     myparse.add_argument('-t','--threads', type=int,  help="number of threads to use [1]", default=1)
     myparse.add_argument('-g','--genomeSAindexNbases', type=int,  help="number of bases to use [6]", default=6)
-    myparse.add_argument('-r','--reference', help="HLA reference genome in FASTA format,\nto be used in place of default HLA reference", default=0)
+    myparse.add_argument('-r','--reference', help="HLA reference genome in FASTA format,\nto be used in place of default HLA reference", default='hla_gen.fasta')
     myparse.add_argument('-a','--annotation', help="HLA gene annotations in TSV format,\nto be used in place of default HLA annotations\n[{}]".format('$HLA-EMPath/reference/hla_gene_annot.tsv'), default=installDir+'/reference/hla_gene_annot.tsv')
     myparse.add_argument('--starHLA', help="path to a directory containing STAR-generated\nHLA genome indexes based on the above FASTA", default=0)
     myparse.add_argument('-o', '--outname', type=str, help="output file name prefix [./hlaEM]", default='./hlaEM')
@@ -122,13 +121,16 @@ def main():
     reads_dir, reads_basename = os.path.split(args.reads1)
     reads_dir += "/out"
 
+    if args.shortcut and os.path.exists(os.path.join(args.outname, 'final_predictions.csv')):
+        print(f"final predictions already exists! Taking shortcut :)")
+        exit(0)
+
     if not os.path.isdir(args.outname):
         os.makedirs(args.outname)
     base_outname = os.path.basename(args.outname)
     outname = os.path.join(args.outname, base_outname)
 
     args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
-
     if not os.path.isdir(args.starHLA):
         indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
@@ -137,7 +139,6 @@ def main():
 
     if not prereqs():
         sys.exit(1)
-
 
     allReadsNum = -1
     hlaBams = []
@@ -157,11 +158,11 @@ def main():
 
     if args.reads2 == "not supplied":
         # TODO remove shortcut
-        if not args.shortcut or not os.path.exists(reads_dir + '.Unmapped.out.mate1.fq'):
+        if not args.shortcut or not (os.path.exists(reads_dir + '.Unmapped.out.mate1.fastq') and os.path.exists('{}.Log.final.out'.format(outname))):
             print("Aligning reads to human genome")
             cmd(argsHumanAlignSTAR + ["--readFilesIn {}".format(args.reads1)])
 
-            os.rename(reads_dir + '.Unmapped.out.mate1', reads_dir + '.Unmapped.out.mate1.fq')
+            os.rename(reads_dir + '.Unmapped.out.mate1', reads_dir + '.Unmapped.out.mate1.fastq')
             os.rename(reads_dir + '.Log.final.out', outname + ".Log.final.out")
         else:
             print('taking shortcut\n')
@@ -188,7 +189,7 @@ def main():
             print("Aligning reads to HLA genomes")
             cmd(["STAR",
                  "--genomeDir {path}".format(path=args.starHLA),
-                 "--readFilesIn {sampleName}.Unmapped.out.mate1.fq".format(sampleName=reads_dir),
+                 "--readFilesIn {sampleName}.Unmapped.out.mate1.fastq".format(sampleName=reads_dir),
                  "--runThreadN {}".format(args.threads),
                  "--twopassMode Basic",
                  "--outSAMtype BAM Unsorted",
@@ -208,12 +209,12 @@ def main():
         hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
 
     else:
-        if not args.shortcut or not os.path.exists(reads_dir + '.Unmapped.out.mate1.fq'):
-            print("Aligning reads to human genome")
+        if not args.shortcut or not (os.path.exists(reads_dir + '.Unmapped.out.mate1.fastq') and os.path.exists('{}.Log.final.out'.format(outname)) and os.path.exists(os.path.exists(reads_dir + '.Unmapped.out.mate2.fastq'))):
+            print("Aligning paired reads to human genome")
             cmd(argsHumanAlignSTAR + ["--readFilesIn {} {}".format(args.reads1, args.reads2)])
 
-            os.rename(reads_dir + '.Unmapped.out.mate1', reads_dir + '.Unmapped.out.mate1.fq')
-            os.rename(reads_dir + '.Unmapped.out.mate2', reads_dir + '.Unmapped.out.mate2.fq')
+            os.rename(reads_dir + '.Unmapped.out.mate1', reads_dir + '.Unmapped.out.mate1.fastq')
+            os.rename(reads_dir + '.Unmapped.out.mate2', reads_dir + '.Unmapped.out.mate2.fastq')
 
             os.rename(reads_dir + '.Log.final.out', outname + ".Log.final.out")
         else:
@@ -229,45 +230,67 @@ def main():
                     print()
                     break
 
-        print("Aligning reads to HLA genomes")
-        cmd(["STAR", 
-             "--genomeDir {path}".format(path=args.starHLA),
-             "--readFilesIn {sampleName}.Unmapped.out.mate1.fq".format(sampleName=reads_dir),
-             "--runThreadN {}".format(args.threads),
-             "--twopassMode Basic",
-             "--outSAMtype BAM Unsorted",
-             "--outSAMattributes NH HI NM MD AS XS",
+        if not args.shortcut or not (os.path.exists('{}.1.Aligned.out.bam'.format(outname))):
+            print("Aligning reads to HLA genomes")
 
-             "--outFilterScoreMinOverLread 0",
-             "--outFilterMatchNminOverLread 0",
-             "--outFilterMatchNmin 0",
-             "--outFilterMultimapNmax 999",
-             "--outFilterMismatchNoverLmax 0.08",
-             "--winAnchorMultimapNmax 1000",
+            cmd(["STAR",
+                 "--genomeDir {path}".format(path=args.starHLA),
+                 "--readFilesIn {sampleName}.Unmapped.out.mate1.fastq {sampleName}.Unmapped.out.mate2.fastq".format(
+                     sampleName=reads_dir),
+                 "--runThreadN {}".format(args.threads),
+                 "--twopassMode Basic",
+                 "--outSAMtype BAM Unsorted",
+                 "--outSAMattributes NH HI NM MD AS XS",
 
-             "--outFileNamePrefix {}.1.".format(outname)])
+                 "--outFilterScoreMinOverLread 0",
+                 "--outFilterMatchNminOverLread 0",
+                 "--outFilterMatchNmin 0",
+                 "--outFilterMultimapNmax 999",
+                 "--outFilterMismatchNoverLmax 0.08",
+                 "--winAnchorMultimapNmax 1000",
+
+                 "--outFileNamePrefix {}.1.".format(outname)])
         hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
-        cmd(["STAR", 
-             "--genomeDir {path}".format(path=args.starHLA),
-             "--readFilesIn {sampleName}.Unmapped.out.mate2.fq".format(sampleName=reads_dir),
-             "--runThreadN {}".format(args.threads),
-             "--twopassMode Basic",
-             "--outSAMtype BAM Unsorted",
-             "--outSAMattributes NH HI NM MD AS XS",
 
-             "--outFilterScoreMinOverLread 0",
-             "--outFilterMatchNminOverLread 0",
-             "--outFilterMatchNmin 0",
-             "--outFilterMultimapNmax 999",
-             "--outFilterMismatchNoverLmax 0.08",
-             "--winAnchorMultimapNmax 1000",
-
-             "--outFileNamePrefix {}.2.".format(outname)])
-        hlaBams.append('{}.2.Aligned.out.bam'.format(outname))
+        # TODO TEST PAIRED READS FUNCTIONALITY
+        # cmd(["STAR",
+        #      "--genomeDir {path}".format(path=args.starHLA),
+        #      "--readFilesIn {sampleName}.Unmapped.out.mate1.fastq".format(sampleName=reads_dir),
+        #      "--runThreadN {}".format(args.threads),
+        #      "--twopassMode Basic",
+        #      "--outSAMtype BAM Unsorted",
+        #      "--outSAMattributes NH HI NM MD AS XS",
+        #
+        #      "--outFilterScoreMinOverLread 0",
+        #      "--outFilterMatchNminOverLread 0",
+        #      "--outFilterMatchNmin 0",
+        #      "--outFilterMultimapNmax 999",
+        #      "--outFilterMismatchNoverLmax 0.08",
+        #      "--winAnchorMultimapNmax 1000",
+        #
+        #      "--outFileNamePrefix {}.1.".format(outname)])
+        # hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
+        # cmd(["STAR",
+        #      "--genomeDir {path}".format(path=args.starHLA),
+        #      "--readFilesIn {sampleName}.Unmapped.out.mate2.fastq".format(sampleName=reads_dir),
+        #      "--runThreadN {}".format(args.threads),
+        #      "--twopassMode Basic",
+        #      "--outSAMtype BAM Unsorted",
+        #      "--outSAMattributes NH HI NM MD AS XS",
+        #
+        #      "--outFilterScoreMinOverLread 0",
+        #      "--outFilterMatchNminOverLread 0",
+        #      "--outFilterMatchNmin 0",
+        #      "--outFilterMultimapNmax 999",
+        #      "--outFilterMismatchNoverLmax 0.08",
+        #      "--winAnchorMultimapNmax 1000",
+        #
+        #      "--outFileNamePrefix {}.2.".format(outname)])
+        # hlaBams.append('{}.2.Aligned.out.bam'.format(outname))
 
     # Clean unneeded intermediary output and files
     if not args.keepint:
-        allowed_extensions = {'.bam', '.tsv', '.pdf', '.csv', '.fq'}
+        allowed_extensions = {'.bam', '.tsv', '.pdf', '.csv', '.fastq', '.fq'}
 
         # Clean both samples and output folders
         directories_to_clean = [os.path.split(reads_dir)[0], args.outname]
@@ -291,7 +314,9 @@ def main():
 
     print("Running EM algorithm", flush=True)
     EmAlgo(readsTable, allReadsNum, thresholdTpm=args.tpm, outputName=outname, printResult=args.printem)
-    clean_output(outname + ".results.tsv")
+    predictions = predict_genotype_from_MLE(outname + ".results.tsv")
+
+    print(predictions)
 
     sys.exit(0)
 

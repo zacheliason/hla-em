@@ -1,7 +1,8 @@
 from random import sample
 import pandas as pd
-import shutil
 import subprocess
+import random
+import shutil
 import os
 import re
 
@@ -16,10 +17,29 @@ import re
 PARENT_DIR = os.path.join(os.path.dirname(os.getcwd()))
 REFERENCE_DIR = os.path.join(PARENT_DIR, 'reference')
 
-# Pull wgsim docker image
-# subprocess.run(["docker", "pull", "pegi3s/wgsim"])
 
-def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=True):
+def apply_loss_of_heterozygousity(alleles, num_lost_alleles):
+    # Group the Series by the first character of the index
+    allele_groups = alleles.groupby(alleles.index.str[0])
+
+    random_allele_groups = random.sample(sorted(allele_groups.groups.keys()), k=min(num_lost_alleles, len(allele_groups)))
+
+    updated_alleles = alleles.copy()
+    for random_group in random_allele_groups:
+        # Get the indices of the selected groups
+        indices = [index for index in allele_groups.get_group(random_group).index]
+
+        # Select a random index from the selected groups
+        index_to_drop = random.choice(indices)
+
+        # Drop the randomly selected index
+        # updated_alleles = updated_alleles.drop(index_to_drop)
+        updated_alleles[index_to_drop] = None
+
+    return updated_alleles
+
+
+def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=True, loh_number=0):
     hla_gen_path = os.path.join(PARENT_DIR, 'hla_gen.fasta')
     patient_filepath = os.path.join(REFERENCE_DIR, "TCGA_HLA_alleles.tsv")
     allele_record_filepath = os.path.join(REFERENCE_DIR, 'allele_record.csv')
@@ -90,21 +110,30 @@ def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=Tru
             # Choose random patient from the list
             random_patient = df.sample().iloc[0]
 
+            # Apply loss of heterozygosity
+            random_patient = apply_loss_of_heterozygousity(random_patient, loh_number)
+
             hla_alleles = []
             for hla_gene, allele in random_patient.items():
+
                 if hla_gene not in update_df:
                     update_df[hla_gene] = []
                     update_df[f"{hla_gene}_allele"] = []
 
+                if allele is None:
+                    update_df[f"{hla_gene}"].append(allele)
+                    update_df[f"{hla_gene}_allele"].append(allele)
+                    continue
+
                 update_df[hla_gene].append(allele)
-                pattern = r'(>HLA:\w*\s' + allele.replace("*", "\*") + r'.*?\s.*\n[ACGT\n]*)'
+                pattern = r'(>HLA:\w*\s' + allele.replace("*", r"\*") + r'.*?\s.*\n[ACGT\n]*)'
                 all_matching_hla_alleles = re.findall(pattern, contents)
 
                 if best_case:
-                    # To sample a random allele (worst case scenario) based on the TCGA patient use the following line
+                    # sample a random allele (worst case scenario) based on the TCGA patient
                     hla_allele = all_matching_hla_alleles[0]
                 else:
-                    # To sample the most common allele (best case scenario) based on the TCGA patient use the following line
+                    # sample the most common allele (best case scenario) based on the TCGA patient
                     hla_allele = sample(all_matching_hla_alleles, 1)[0]
 
                 hla_alleles.append(hla_allele)
@@ -252,7 +281,7 @@ def create_large_tests():
         simulate_masked_reads(num_per_test_case, num_human_reads)
 
 def create_dummy_tests():
-    num_per_test_case = 10
+    num_per_test_case = 3
     num_hla_reads = 1500
 
     current_path = os.environ.get("PATH", "")
@@ -260,9 +289,16 @@ def create_dummy_tests():
     new_path = f"{current_path}:{home_dir}/.docker/bin"
     os.environ['PATH'] = new_path
 
+    loh_number = 1
+    num_reads = (num_hla_reads // 6) * (6 - loh_number)
     # simulate hla reads using best case HLA alleles from TCGA data
-    simulate_hla_reads(num_per_test_case, num_hla_reads, best_case=True)
+    simulate_hla_reads(num_per_test_case, num_reads, best_case=True, loh_number=loh_number)
     # simulate hla reads using random HLA alleles from TCGA data
-    simulate_hla_reads(num_per_test_case, num_hla_reads, best_case=False)
+    simulate_hla_reads(num_per_test_case, num_reads, best_case=False, loh_number=loh_number)
+
+    loh_number = 2
+    num_reads = (num_hla_reads // 6) * (6 - loh_number)
+    simulate_hla_reads(num_per_test_case, num_reads, best_case=True, loh_number=loh_number)
+    simulate_hla_reads(num_per_test_case, num_reads, best_case=False, loh_number=loh_number)
 
 create_dummy_tests()

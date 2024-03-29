@@ -3,12 +3,14 @@
 
 from matplotlib import pyplot as plt, lines as lines
 from subprocess import Popen, PIPE
+from typing import Dict, Tuple
 import argparse as argp
 import pandas as pd
 import numpy as np
 import matplotlib
 import traceback
 import time
+import json
 import sys
 import os
 import re
@@ -26,6 +28,14 @@ class alignInfo:
         self.error_length = error_length
         self.pos = pos
         self.cigar = cigar
+
+    def to_json(self):
+        return {
+            "match_length": self.match_length,
+            "error_length": self.error_length,
+            "pos": self.pos,
+            "cigar": self.cigar
+        }
 
 
 class readAligns:
@@ -66,6 +76,16 @@ class readAligns:
             self.hlaRefID_to_alignInfo[refId] = [0, 0]
             self.hlaRefID_to_alignInfo[refId][mate] = alignInfo(match_length, error_length, pos, cigar)
 
+    def to_json(self):
+        return {
+            "ambig": self.ambig,
+            "passDust": self.passDust,
+            "hlaRefID_to_alignInfo": {
+                ref_id: [align_info.to_json() if isinstance(align_info, alignInfo) else 0 for align_info in align_infos]
+                for ref_id, align_infos in self.hlaRefID_to_alignInfo.items()
+            }
+        }
+
 
 # Calculate score to identify low-complexity reads using DUST algorithm
 # (S>2 should be filtered)
@@ -85,6 +105,111 @@ def dust(read):
     return S
 
 
+def create_hla_read_matrix(dictReadName_ReadAligns):
+    read_names = list(dictReadName_ReadAligns.keys())
+    ref_ids = set()
+
+    for read_align in dictReadName_ReadAligns.values():
+        ref_ids.update(read_align.hlaRefID_to_alignInfo.keys())
+
+    ref_ids = sorted(ref_ids)
+    num_reads = len(read_names)
+    num_ref_ids = len(ref_ids)
+
+    match_length_matrix = np.zeros((num_ref_ids, num_reads), dtype=int)
+    error_length_matrix = np.zeros((num_ref_ids, num_reads), dtype=int)
+    ambig_array = np.zeros(num_reads, dtype=int)
+    pass_dust_array = np.zeros(num_reads, dtype=int)
+
+    ref_ids_set = set(ref_ids)
+
+    for j, read_name in enumerate(read_names):
+        read_align = dictReadName_ReadAligns[read_name]
+        ref_id_align_info = read_align.hlaRefID_to_alignInfo
+
+        ambiguous = read_align.ambig
+        pass_dust = any(x for x in read_align.passDust)
+
+        ambig_array[j] = ambiguous
+        pass_dust_array[j] = pass_dust
+
+        for ref_id in ref_id_align_info.keys():  # Iterate over keys which should be the reference IDs
+            if ref_id in ref_ids_set:
+                alignments = ref_id_align_info[ref_id]
+                lm = sum(align.match_length for align in alignments if align)
+                em = sum(align.error_length for align in alignments if align)
+
+                match_length_matrix[ref_ids.index(ref_id), j] = lm
+                error_length_matrix[ref_ids.index(ref_id), j] = em
+
+    return match_length_matrix, error_length_matrix, ambig_array, pass_dust_array, ref_ids, read_names
+
+def mask_non_max_values(match_length_matrix, ambig_array):
+    max_values = np.max(match_length_matrix, axis=1, keepdims=True)
+    mask = match_length_matrix == max_values
+    unambig_array = ~ambig_array.astype(bool)
+    mask = np.logical_or(mask, unambig_array)
+    match_length_matrix = np.where(mask, match_length_matrix, 0)
+    return match_length_matrix
+
+
+def createTotalMappedReadsMat(mat, ref_ids, hlaRefID_to_totalMappedReads):
+    for i, ref_id in enumerate(ref_ids):
+        total_mapped_reads = hlaRefID_to_totalMappedReads[ref_id]
+        mat[i, :] = np.where(mat[i, :] > 0, total_mapped_reads, 0)
+
+    return mat
+
+
+def filter_highest_mapped_reads(arr, ambig_array, n=1):
+    mask = np.zeros_like(arr, dtype=bool)
+    for col_index in range(arr.shape[1]):
+        col = arr[:, col_index]
+        top_n_values = np.unique(np.sort(col)[-n:])
+        for value in top_n_values:
+            mask[:, col_index] |= (arr[:, col_index] == value)
+
+    unambig_array = ~ambig_array.astype(bool)
+    mask = np.logical_or(mask, unambig_array)
+    masked_matrix = arr * mask
+    return masked_matrix
+
+
+def save_to_json(data, filename):
+    json_data = {}
+    for key, value in data.items():
+        if isinstance(value, readAligns):
+            json_data[key] = value.to_json()
+        else:
+            json_data[key] = value
+    # json_data = {key: value.to_json() for key, value in data.items()}
+
+    # Serialize the JSON-serializable data to a JSON string
+    json_str = json.dumps(json_data, indent=4)
+
+    # Write the JSON string to a file
+    with open(filename, "w") as f:
+        f.write(json_str)
+
+def read_from_json(filename):
+    def from_json_to_align_info(data):
+        if data == 0:
+            return 0
+        return alignInfo(data["match_length"], data["error_length"], data["pos"], data["cigar"])
+
+    def from_json_to_read_aligns(data):
+        ambig = data["ambig"]
+        passDust = data["passDust"]
+        hlaRefID_to_alignInfo = {
+            ref_id: [from_json_to_align_info(align_info_data) for align_info_data in align_infos]
+            for ref_id, align_infos in data["hlaRefID_to_alignInfo"].items()
+        }
+        return readAligns(ambig, passDust, hlaRefID_to_alignInfo)
+
+    with open(filename, 'r') as f:
+        data = json.load(f)
+        return {read_name: from_json_to_read_aligns(read_align_data) for read_name, read_align_data in data.items()}
+
 def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName='hlaType', covMapYmax=0, suppressOutputAndFigures=True):
     readNames_to_aligns = {}
     hlaRefIdMappedSet = set()
@@ -96,7 +221,7 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
     hlaRefIdCovDict = {}
 
     installDir = os.path.dirname(os.path.abspath(__file__))
-    print("annot: {}".format(annot))
+    # print("annot: {}".format(annot))
     # Make dict to translate ref seq names (SAM field 2) into HLA type names
 
     if not annot:
@@ -106,168 +231,327 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
                       'E6': 'b', 'E7': 'm', 'E8': 'c', 'L1': 'indigo', 'L2': 'brown'}
     annotColors = ['maroon', 'navy', 'pink', 'g', 'gray', 'k', 'y', 'r', 'orange', 'b', 'm', 'c', 'indigo']
 
-    # Read in HLA reference file
-    with open(hlaRefPath, 'r') as fHlaRef:
-        hlaRef = ''
-        refId = ''
-        for line in fHlaRef:
-            if not line:
-                break
-
-            if line[0] == '>':
-                if hlaRef:
-                    hlaRefID_to_seq[refId] = hlaRef
-                    hlaRef = ''
-                refId = line.strip().split()[0][1:]
-                hlaRefID_to_type[refId] = line.strip().split()[1]
-
-            else:
-                hlaRef += line.strip()
-        hlaRefID_to_seq[refId] = hlaRef
-    # For all HLA*.bam files in directory
-
-    for bam in hlaBams:
-        total_fail_dust = 0
-        total_pass_dust = 0
-        mate = bam.split('.')[-4]
-
-        # Read the file
-        cmdArgs = ['samtools', 'view', bam]
-        if sys.version[0] == '2':
-            pipe = Popen(cmdArgs, stdout=PIPE)
-        else:
-            pipe = Popen(cmdArgs, stdout=PIPE, encoding='utf8')
-        # loop over lines
-        for line in pipe.stdout:
-            # Get read name from field 0, SAM flags from f1, ref id from f2,
-            # position from f3, seq from field 9, and tags from field 11
-            line = line.strip().split('\t')
-            [readName, readFlags, readRefId, readPos, readCIGAR, readSeq, readTags] = \
-                [line[0], line[1], line[2], int(line[3]), line[5], line[9], line[11:]]
-            read_length = len(readSeq)
-            readSeq = readSeq.upper()
-            try:
-                editDist = [tag for tag in readTags if tag.startswith('NM')][0].split(':')[-1]
-            except:
-                print('Error parsing tags:')
-                print(readName)
-                print(readTags)
-                print(line)
-                print()
-                print(traceback.format_exc())
-                continue
-                raise
-                sys.exit(1)
-
-            # Add this read to the dictionary
-            cigarList = list(filter(None, re.split('(\D+)', readCIGAR)))
-            alignedSeq = ''
-            pos = 0
-            clip_length = 0
-            for cigar in zip(cigarList[0::2], cigarList[1::2]):
-                clen = int(cigar[0])
-                if cigar[1] in 'M=XIP':
-                    alignedSeq += readSeq[pos:pos + clen]
-                    pos += clen
-                elif cigar[1] in 'SH':
-                    pos += clen
-
-            # Get proper length of matching using corrected readlength
-            error_length = int(editDist)
-            match_length = len(alignedSeq) - error_length
-
-            passDust = dust(alignedSeq) <= 2
-            # Disallow clipping on both ends
-            if cigarList[1] in 'HS' and cigarList[-1] in 'HS':
-                passDust = False
-
-            if not passDust:
-                total_fail_dust += 1
-            else:
-                total_pass_dust += 1
-
-            hlaRefIdMappedSet.add(readRefId)
-            if readName in readNames_to_aligns:
-                readNames_to_aligns[readName].addAlign(readRefId, passDust, mate, match_length, error_length, readPos, readCIGAR)
-            else:
-                readNames_to_aligns[readName] = readAligns(readRefId, passDust, mate, match_length, error_length, readPos, readCIGAR)
-
-            if readRefId in hlaRefID_to_totalMappedReads:
-                hlaRefID_to_totalMappedReads[readRefId] += 1
-            else:
-                hlaRefID_to_totalMappedReads[readRefId] = 1
-
-
-        while pipe.poll() is None:
-            # Process not yet terminated, wait
-            time.sleep(0.5)
-        if pipe.returncode > 0:
-            raise RuntimeError('Error parsing viral-aligned BAM files; aborting.')
-
-    # print(total_pass_dust / (total_fail_dust + total_pass_dust))
-
-    # Check if all reads aligned to an HLA reference have equal or better alignment to a reference with more reads
-    filteredReadNames_to_aligns = {}
-    hlaRefIDs = sorted(hlaRefIdMappedSet)
-    for readName in readNames_to_aligns.keys():
-        isRedundant = True
-        readAlign = readNames_to_aligns[readName]
-        for refId in hlaRefIDs:
-            if refId in readAlign.hlaRefID_to_alignInfo:
-                if not readAlign.ambig:
-                    isRedundant = False
+    if False: #os.path.exists('readNames_to_aligns.json'):
+        readNames_to_aligns = read_from_json('readNames_to_aligns.json')
+        with open('hlaRefID_to_totalMappedReads.json') as f:
+            hlaRefID_to_totalMappedReads = json.load(f)
+    else:
+        # Read in HLA reference file
+        with open(hlaRefPath, 'r') as fHlaRef:
+            hlaRef = ''
+            refId = ''
+            for line in fHlaRef:
+                if not line:
                     break
 
-        if isRedundant:
-            readAlign_info = readAlign.hlaRefID_to_alignInfo
-            try:
-                # First we filter out any alignments which do not align to the maximum observed match length
+                if line[0] == '>':
+                    if hlaRef:
+                        hlaRefID_to_seq[refId] = hlaRef
+                        hlaRef = ''
+                    refId = line.strip().split()[0][1:]
+                    hlaRefID_to_type[refId] = line.strip().split()[1]
 
-                # initialize array of zeros
-                ref_match_lengths = np.zeros(len(readAlign_info))
-                ref_Ids = list(map(lambda x: x, readAlign.hlaRefID_to_alignInfo.keys()))
-
-                if len(readAlign_info) > 0:
-                    first_key = next(iter(readAlign_info))
                 else:
-                    continue
+                    hlaRef += line.strip()
+            hlaRefID_to_seq[refId] = hlaRef
+        # For all HLA*.bam files in directory
 
-                # Add array of match lengths from first (and second, if available) reads
-                if readAlign_info[first_key][0]:
-                    ref_match_lengths = np.add(ref_match_lengths, np.array(list(map(lambda x: readAlign_info[x][0].match_length if type(readAlign_info[x][0]) == alignInfo else 0, readAlign_info))))
-                if readAlign_info[first_key][1]:
-                    ref_match_lengths = np.add(ref_match_lengths, np.array(list(map(lambda x: readAlign_info[x][1].match_length if type(readAlign_info[x][1]) == alignInfo else 0, readAlign_info))))
-
-                max_match_length_indices = np.where(ref_match_lengths == np.amax(ref_match_lengths))
-                # filter alignments by match length
-                refs_max_match_lengths = np.array(ref_Ids)[max_match_length_indices]
-
-                # Now we filter alignments that map to a reference not having the maximum observed reads
-                filtered_refs_mapped_nums = {x: hlaRefID_to_totalMappedReads[x] for x in hlaRefID_to_totalMappedReads if x in refs_max_match_lengths}
-                ref_mapped_nums = np.array(list(filtered_refs_mapped_nums.values()))
-                ref_mapped_nums_ids = np.array(list(filtered_refs_mapped_nums.keys()))
-
-                # Select the n top reference genes that match this read
-                n = 2
-                # if len(ref_mapped_nums) > n - 1:
-                # ind = np.argpartition(ref_mapped_nums, -n)[-n]
-                # max_ref_ids = ref_mapped_nums_ids[ref_mapped_nums > ref_mapped_nums[ind] - 1]
-
-                max_mapped_indices = np.where(ref_mapped_nums == np.amax(ref_mapped_nums))
-                max_ref_ids = np.array(ref_mapped_nums_ids)[max_mapped_indices]
-
-                hlaRefID_to_alignInfo = {}
-                for max_ref_id in max_ref_ids:
-                    hlaRefID_to_alignInfo[max_ref_id] = readNames_to_aligns[readName].hlaRefID_to_alignInfo[max_ref_id]
-
-                ambig = readNames_to_aligns[readName].ambig
-                passDust = readNames_to_aligns[readName].passDust
-
-                filteredReadNames_to_aligns[readName] = readAligns(ambig, passDust, hlaRefID_to_alignInfo)
+        for bam in hlaBams:
+            total_fail_dust = 0
+            total_pass_dust = 0
+            # TODO remove TRY/EXCEPT
+            try:
+                mate = f"{int(bam.split('.')[-4])}"
             except:
-                print(traceback.format_exc())
-        else:
-            filteredReadNames_to_aligns[readName] = readNames_to_aligns[readName]
+                mate = '1'
+
+            # Read the file
+            cmdArgs = ['samtools', 'view', bam]
+            if sys.version[0] == '2':
+                pipe = Popen(cmdArgs, stdout=PIPE)
+            else:
+                pipe = Popen(cmdArgs, stdout=PIPE, encoding='utf8')
+            # loop over lines
+            for line in pipe.stdout:
+                # Get read name from field 0, SAM flags from f1, ref id from f2,
+                # position from f3, seq from field 9, and tags from field 11
+                line = line.strip().split('\t')
+                [readName, readFlags, readRefId, readPos, readCIGAR, readSeq, readTags] = \
+                    [line[0], line[1], line[2], int(line[3]), line[5], line[9], line[11:]]
+                read_length = len(readSeq)
+                readSeq = readSeq.upper()
+                try:
+                    editDist = [tag for tag in readTags if tag.startswith('NM')][0].split(':')[-1]
+                except:
+                    print('Error parsing tags:')
+                    print(readName)
+                    print(readTags)
+                    print(line)
+                    print()
+                    print(traceback.format_exc())
+                    continue
+                    raise
+                    sys.exit(1)
+
+                # Add this read to the dictionary
+                cigarList = list(filter(None, re.split('(\D+)', readCIGAR)))
+                alignedSeq = ''
+                pos = 0
+                clip_length = 0
+                for cigar in zip(cigarList[0::2], cigarList[1::2]):
+                    clen = int(cigar[0])
+                    if cigar[1] in 'M=XIP':
+                        alignedSeq += readSeq[pos:pos + clen]
+                        pos += clen
+                    elif cigar[1] in 'SH':
+                        pos += clen
+
+                # Get proper length of matching using corrected readlength
+                error_length = int(editDist)
+                match_length = len(alignedSeq) - error_length
+
+                passDust = dust(alignedSeq) <= 2
+                # Disallow clipping on both ends
+                if cigarList[1] in 'HS' and cigarList[-1] in 'HS':
+                    passDust = False
+
+                if not passDust:
+                    total_fail_dust += 1
+                else:
+                    total_pass_dust += 1
+
+                hlaRefIdMappedSet.add(readRefId)
+                if readName in readNames_to_aligns:
+                    readNames_to_aligns[readName].addAlign(readRefId, passDust, mate, match_length, error_length, readPos, readCIGAR)
+                else:
+                    readNames_to_aligns[readName] = readAligns(readRefId, passDust, mate, match_length, error_length, readPos, readCIGAR)
+
+                if readRefId in hlaRefID_to_totalMappedReads:
+                    hlaRefID_to_totalMappedReads[readRefId] += 1
+                else:
+                    hlaRefID_to_totalMappedReads[readRefId] = 1
+
+            while pipe.poll() is None:
+                # Process not yet terminated, wait
+                time.sleep(0.5)
+            if pipe.returncode > 0:
+                raise RuntimeError('Error parsing viral-aligned BAM files; aborting.')
+
+        # print(total_pass_dust / (total_fail_dust + total_pass_dust))
+        save_to_json(readNames_to_aligns, 'readNames_to_aligns.json')
+        with open('hlaRefID_to_totalMappedReads.json', 'w') as f:
+            json.dump(hlaRefID_to_totalMappedReads, f)
+
+
+
+    lm_matrix, em_matrix, ambig_array, pass_dust_array, ref_ids, read_names = create_hla_read_matrix(readNames_to_aligns)
+    masked_mat = mask_non_max_values(lm_matrix, ambig_array)
+    tmr_mat = createTotalMappedReadsMat(masked_mat, ref_ids, hlaRefID_to_totalMappedReads)
+    filtered_mat = filter_highest_mapped_reads(tmr_mat, ambig_array)
+
+    df = pd.DataFrame(filtered_mat, index=ref_ids, columns=read_names)
+
+    if filterLowComplex:
+        fail_dust_mask = ~pass_dust_array.astype(bool)
+        dust_filtered_df = df.copy()
+        dust_filtered_df.loc[:, fail_dust_mask] = 0
+        df = dust_filtered_df
+
+    # Sum the rows and columns
+    row_sums = df.sum(axis=1)
+    col_sums = df.sum(axis=0)
+
+    # Filter out empty rows and columns
+    df_filtered = df.loc[(df.sum(axis=1) != 0), (df.sum(axis=0) != 0)]
+
+    print()
+    print(f"{len(df_filtered.index)} x {len(df_filtered.columns)}")
+    print()
+
+    mappedCount = 0
+    outLine = ''
+    nameLine = ''
+    # readNames_to_aligns = filteredReadNames_to_aligns
+
+    filteredReadNames_to_aligns = {}
+    filtered_refs = set()
+
+    # Iterate over the original dictionary
+    for readName in df_filtered.columns:
+        read_index = read_names.index(readName)
+
+        read_is_ambig = ambig_array[read_index]
+        read_passes_dust = pass_dust_array[read_index]
+
+        if not (filterLowComplex and not read_passes_dust):
+            mappedCount += 1
+            if read_is_ambig:
+                outLine += '\tA'
+            else:
+                outLine += '\tU'
+            nameLine += '\t' + readName
+            # Add the element to the filtered dictionary
+
+
+    outLine = str(mappedCount) + outLine
+    outTable = [nameLine]
+    outTable.append(outLine)
+
+    if mappedCount:
+        for refId in df_filtered.index:
+            hlaName = refId.replace(' ', '')
+            outLine = hlaName + " (" + hlaRefID_to_type[refId] + ")"
+            for readName in df_filtered.columns:
+                lookdf = df_filtered.loc[refId, readName]
+                if df_filtered.loc[refId, readName] > 0:
+                    geneSet = set()
+                    match_length = lm_matrix[ref_ids.index(refId), read_names.index(readName)]
+                    error_length = em_matrix[ref_ids.index(refId), read_names.index(readName)]
+
+                    genes = ','.join(sorted(geneSet))
+                    outLine += '\t' + '\t'.join(['1', str(match_length), str(error_length), genes])
+                else:
+                    outLine += '\t0\t-1\t-1\t'
+            outTable.append(outLine)
+
+    return outTable
+
+
+
+
+
+
+    # refCounts = {}
+    # for read in readNames_to_aligns.values():
+    #     for refId in read.hlaRefID_to_alignInfo:
+    #         if refId in refCounts:
+    #             refCounts[refId]['length'] += read.hlaRefID_to_alignInfo[refId][0].match_length
+    #             refCounts[refId]['reads'] += 1
+    #         else:
+    #             refCounts[refId] = {'length': read.hlaRefID_to_alignInfo[refId][0].match_length, 'reads': 1}
+    #
+    # df = pd.DataFrame(refCounts)
+    #
+    # # transpose df
+    # df = df.T
+    #
+    # df = df.sort_values('length')
+    # df.to_csv('refCounts.csv', index=True)
+
+    def calculate_alignment_length(alignments: Tuple[object, object]) -> int:
+        """
+        Calculates the total mapping length for a pair of alignments.
+        """
+        total_lm = 0
+        for alignment in alignments:
+            if alignment:
+                total_lm += alignment.match_length
+        return total_lm
+
+    hlaRefIDs = sorted(hlaRefIdMappedSet)
+    for ref_id in hlaRefIDs:
+        is_redundant = True
+        for read_name, read_align in readNames_to_aligns.items():
+            if ref_id in read_align.hlaRefID_to_alignInfo:
+                if not read_align.ambig:
+                    is_redundant = False
+                    break
+
+        if is_redundant:
+            for read_name, read_align in readNames_to_aligns.items():
+                ref_id_align_info = read_align.hlaRefID_to_alignInfo
+                ref_alignments = ref_id_align_info.get(ref_id, None)
+                if ref_alignments is not None:
+                    ref_total_lm = calculate_alignment_length(ref_alignments)
+                    ref_mapped_num = hlaRefID_to_totalMappedReads[ref_id]
+                    updated_ref_id_align_info = {alt_ref_id: alt_alignments for alt_ref_id, alt_alignments in
+                                                 ref_id_align_info.items() if alt_ref_id != ref_id}
+                    remove_redundant = False
+                    # updated_ref_id_align_info = {}
+
+                    for alt_ref_id, alt_alignments in ref_id_align_info.items():
+                        if alt_ref_id != ref_id:
+                            alt_total_lm = calculate_alignment_length(alt_alignments)
+                            alt_mapped_num = hlaRefID_to_totalMappedReads[alt_ref_id]
+                            if alt_total_lm >= ref_total_lm and alt_mapped_num > ref_mapped_num:
+                                remove_redundant = True
+                                break
+
+                    if not remove_redundant:
+                        updated_ref_id_align_info[ref_id] = ref_alignments
+                    else:
+                        hlaRefID_to_totalMappedReads[ref_id] -= 1
+
+                    read_align.dictRefId_AlignInfo = updated_ref_id_align_info
+
+    # Check if all reads aligned to an HLA reference have equal or better alignment to a reference with more reads
+    # filteredReadNames_to_aligns = {}
+    # hlaRefIDs = sorted(hlaRefIdMappedSet)
+    # for readName in readNames_to_aligns.keys():
+    #     isRedundant = True
+    #     readAlign = readNames_to_aligns[readName]
+    #     for refId in hlaRefIDs:
+    #         if refId in readAlign.hlaRefID_to_alignInfo:
+    #             if not readAlign.ambig:
+    #                 isRedundant = False
+    #                 break
+    #
+    #     if isRedundant:
+    #         readAlign_info = readAlign.hlaRefID_to_alignInfo
+    #         try:
+    #             # First we filter out any alignments which do not align to the maximum observed match length
+    #
+    #             # initialize array of zeros
+    #             ref_match_lengths = np.zeros(len(readAlign_info))
+    #             ref_Ids = list(map(lambda x: x, readAlign.hlaRefID_to_alignInfo.keys()))
+    #
+    #             if len(readAlign_info) > 0:
+    #                 first_key = next(iter(readAlign_info))
+    #             else:
+    #                 continue
+    #
+    #             # Add array of match lengths from first (and second, if available) reads
+    #             if readAlign_info[first_key][0]:
+    #                 ref_match_lengths = np.add(ref_match_lengths, np.array(list(map(lambda x: readAlign_info[x][0].match_length if type(readAlign_info[x][0]) == alignInfo else 0, readAlign_info))))
+    #             if readAlign_info[first_key][1]:
+    #                 ref_match_lengths = np.add(ref_match_lengths, np.array(list(map(lambda x: readAlign_info[x][1].match_length if type(readAlign_info[x][1]) == alignInfo else 0, readAlign_info))))
+    #
+    #             max_match_length_indices = np.where(ref_match_lengths == np.amax(ref_match_lengths))
+    #             # filter alignments by match length
+    #             refs_max_match_lengths = np.array(ref_Ids)[max_match_length_indices]
+    #
+    #             # Now we filter alignments that map to a reference not having the maximum observed reads
+    #             filtered_refs_mapped_nums = {x: hlaRefID_to_totalMappedReads[x] for x in hlaRefID_to_totalMappedReads if x in refs_max_match_lengths}
+    #             ref_mapped_nums = np.array(list(filtered_refs_mapped_nums.values()))
+    #             ref_mapped_nums_ids = np.array(list(filtered_refs_mapped_nums.keys()))
+    #
+    #             # Select the n top reference genes that match this read
+    #             n = 1
+    #             top_n_values = np.sort(np.unique(ref_mapped_nums))[::-1][:n]
+    #
+    #             max_ref_ids = []
+    #             for value in top_n_values:
+    #                 # Find the indices where ref_mapped_nums has the current value
+    #                 indices = np.where(ref_mapped_nums == value)[0]
+    #
+    #                 # Get the corresponding ref_mapped_nums_ids
+    #                 max_ref_ids.extend(np.array(ref_mapped_nums_ids)[indices])
+    #
+    #             hlaRefID_to_alignInfo = {}
+    #             for max_ref_id in max_ref_ids:
+    #                 hlaRefID_to_alignInfo[max_ref_id] = readNames_to_aligns[readName].hlaRefID_to_alignInfo[max_ref_id]
+    #
+    #             ambig = readNames_to_aligns[readName].ambig
+    #             passDust = readNames_to_aligns[readName].passDust
+    #
+    #             filteredReadNames_to_aligns[readName] = readAligns(ambig, passDust, hlaRefID_to_alignInfo)
+    #         except:
+    #             print(traceback.format_exc())
+    #     else:
+    #         filteredReadNames_to_aligns[readName] = readNames_to_aligns[readName]
+
+
+
 
     # Now process all reads/read pairs in dict to prepare output table and coverage maps
     # Each column of the outTable is a distinct, mapped read
@@ -279,7 +563,7 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
     mappedCount = 0
     outLine = ''
     nameLine = ''
-    readNames_to_aligns = filteredReadNames_to_aligns
+    # readNames_to_aligns = filteredReadNames_to_aligns
 
 
     filteredReadNames_to_aligns = {}
@@ -462,10 +746,14 @@ def main(argv):
     if args.bam2 != "not supplied":
         hlaBams += [args.bam2]
 
-    if (args.reference == 0):
-        defaultHlaRef = True
-    else:
-        defaultHlaRef = False
+
+
+    # hlaBams = ['/Users/zacheliason/Downloads/hla-em/output/trial_1/trial_1.1.Aligned.out.bam']
+    # hlaRefPath = '/Users/zacheliason/Downloads/hla-em/hla_gen_ABC.fasta'
+    # filterLowComplex = True
+    # outname = '/Users/zacheliason/Downloads/hla-em/'
+    # outTable = mapReads(hlaBams, hlaRefPath=hlaRefPath, filterLowComplex=filterLowComplex, outputName=outname)
+
 
     outTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
 
