@@ -1,4 +1,4 @@
-from src.ManipulateFiles import predict_genotype_from_MLE, filter_fasta, plot_coverage_maps
+from src.ManipulateFiles import predict_genotype_from_MLE, filter_fasta, plot_coverage_maps, plot_pie_charts
 from src.CreateMappedReadTable import mapReads
 from src.EMstep import EmAlgo
 from whichcraft import which
@@ -12,8 +12,8 @@ import re
 
 __version__ = "1.0.2"
 
-# # TODO remove
-# os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
+# TODO remove
+os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
 
 def prereqs():
     programs = ["python3", "samtools"]#, "STAR"]
@@ -99,36 +99,40 @@ def get_read_counts_from_log(filepath):
         return total_reads, unmapped_reads
 
 
-def main():
-    installDir = os.path.dirname(os.path.abspath(__file__))
-    
-    myparse = argp.ArgumentParser(prog='HLA-EM', description='HLA-EM is an HLA genotyping tool that utilizes an expectation maximization algorithm to identify the presence of different HLA genotypes in a sample from RNA-seq data.', formatter_class=lambda prog: argp.RawTextHelpFormatter(prog, width=99999))
-    
-    # positional arguments
-    myparse.add_argument("reads1", help="single-end FASTQ file or first paired-end FASTQ file")
-    myparse.add_argument("reads2", nargs='?', help="(optional) second paired-end FASTQ file", default="not supplied")
+def main(args=None):
+    if args is None:
+        installDir = os.path.dirname(os.path.abspath(__file__))
 
-    # options
-    myparse.add_argument('-t','--threads', type=int,  help="number of threads to use [1]", default=1)
-    myparse.add_argument('-g','--genomeSAindexNbases', type=int,  help="number of bases to use [6]", default=6)
-    myparse.add_argument('-r','--reference', help="HLA reference genome in FASTA format,\nto be used in place of default HLA reference", default='hla_gen.fasta')
-    myparse.add_argument('-a','--annotation', help="HLA gene annotations in TSV format,\nto be used in place of default HLA annotations\n[{}]".format('$HLA-EMPath/reference/hla_gene_annot.tsv'), default=installDir+'/reference/hla_gene_annot.tsv')
-    myparse.add_argument('--starHLA', help="path to a directory containing STAR-generated\nHLA genome indexes based on the above FASTA", default=0)
-    myparse.add_argument('-o', '--outname', type=str, help="output file name prefix [./hlaEM]", default='./hlaEM')
-    myparse.add_argument('-d', '--disabledust', action='store_true', help="disable filtering of low-complexity reads")
-    myparse.add_argument('--tpm', type=float, help="TPM threshold for identifying a true positive [1.48]", default=1.48)
-    myparse.add_argument('-p', '--printem', action='store_true', help="print EM results to STDOUT")
-    myparse.add_argument('-k', '--keepint', action='store_true', help="keep intermediate files")
-    myparse.add_argument('-v', '--version', action='version', version='%(prog)s {}'.format(__version__))
+        myparse = argp.ArgumentParser(prog='HLA-EM', description='HLA-EM is an HLA genotyping tool that utilizes an expectation maximization algorithm to identify the presence of different HLA genotypes in a sample from RNA-seq data.', formatter_class=lambda prog: argp.RawTextHelpFormatter(prog, width=99999))
 
-    # TODO remove shortcut
-    myparse.add_argument('--shortcut', action='store_true', default=False)
+        # positional arguments
+        myparse.add_argument("reads1", help="single-end FASTQ file or first paired-end FASTQ file")
+        myparse.add_argument("reads2", nargs='?', help="(optional) second paired-end FASTQ file", default="not supplied")
 
-    # other required arguments
-    requiredNamed = myparse.add_argument_group('required arguments')
-    requiredNamed.add_argument('-s','--stargenome', help="path to a directory containing STAR-generated\nhuman genome indexes", required=True)
+        # options
+        myparse.add_argument('-t','--threads', type=int,  help="number of threads to use [1]", default=1)
+        myparse.add_argument('-g','--genomeSAindexNbases', type=int,  help="number of bases to use [6]", default=6)
+        myparse.add_argument('-r','--reference', help="HLA reference genome in FASTA format,\nto be used in place of default HLA reference", default='hla_gen.fasta')
+        myparse.add_argument('-a','--annotation', help="HLA gene annotations in TSV format,\nto be used in place of default HLA annotations\n[{}]".format('$HLA-EMPath/reference/hla_gene_annot.tsv'), default=installDir+'/reference/hla_gene_annot.tsv')
+        myparse.add_argument('--starHLA', help="path to a directory containing STAR-generated\nHLA genome indexes based on the above FASTA", default=0)
+        myparse.add_argument('-o', '--outname', type=str, help="output file name prefix [./hlaEM]", default='./hlaEM')
+        myparse.add_argument('-d', '--disabledust', action='store_true', help="disable filtering of low-complexity reads")
+        myparse.add_argument('--tpm', type=float, help="TPM threshold for identifying a true positive [1.48]", default=1.48)
+        myparse.add_argument('-p', '--printem', action='store_true', help="print EM results to STDOUT")
+        myparse.add_argument('-k', '--keepint', action='store_true', help="keep intermediate files", default=False)
+        myparse.add_argument('--suppress_figs', action='store_true', help="skip plots for faster performance")
+        myparse.add_argument('-v', '--version', action='version', version='%(prog)s {}'.format(__version__))
+        myparse.add_argument('--training', type=str, default="")
 
-    args = myparse.parse_args()
+
+        # TODO remove shortcut
+        myparse.add_argument('--shortcut', action='store_true', default=False)
+
+        # other required arguments
+        requiredNamed = myparse.add_argument_group('required arguments')
+        requiredNamed.add_argument('-s','--stargenome', help="path to a directory containing STAR-generated\nhuman genome indexes", required=True)
+
+        args = myparse.parse_args()
 
     if len(args.outname.split('/')) == 1:
         args.outname = os.path.join(os.getcwd(), args.outname)
@@ -138,8 +142,9 @@ def main():
 
     # TODO remove shortcut
     if args.shortcut and os.path.exists(os.path.join(args.outname, 'final_predictions.csv')):
-        print(f"final predictions already exists! Taking shortcut :)")
-        exit(0)
+        pass
+        # print(f"final predictions already exists! Taking shortcut :)")
+        # exit(0)
 
     if not os.path.isdir(args.outname):
         os.makedirs(args.outname)
@@ -147,8 +152,8 @@ def main():
     outname = os.path.join(args.outname, base_outname)
 
     args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
-    if not os.path.isdir(args.starHLA):
-        indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
+    # if not os.path.isdir(args.starHLA):
+    #     indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
     if args.threads < 1:
         args.threads = 1
@@ -169,8 +174,6 @@ def main():
              "--outFileNamePrefix {}.".format(reads_dir)]
     if args.reads1.endswith(".gz"):
         argsHumanAlignSTAR.append("--readFilesCommand zcat")
-
-    print(args)
 
     if args.reads2 == "not supplied":
         # TODO remove shortcut
@@ -218,7 +221,7 @@ def main():
             os.rename(reads_dir + '.Log.final.out', outname + ".Log.final.out")
 
         allReadsNum, unmappedReadsNum = get_read_counts_from_log(outname + ".Log.final.out")
-        print(f"{unmappedReadsNum} reads unmapped out of {allReadsNum} reads total")
+        # print(f"{unmappedReadsNum} reads unmapped out of {allReadsNum} reads total")
 
         # TODO remove shortcut
         if not args.shortcut or not (os.path.exists('{}.1.Aligned.out.bam'.format(outname))):
@@ -259,13 +262,15 @@ def main():
                     if extension.lower() not in allowed_extensions and "Log.final.out" not in filename:
                         os.remove(os.path.join(dir_to_clean, filename))
 
-    print("Creating read table", flush=True)
-    readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation)
+    if not args.shortcut or not (os.path.exists('{}.readsTable.tsv'.format(outname))):
+        print("Creating read table", flush=True)
+        readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation, suppressOutputAndFigures=args.suppress_figs)
 
-    print("Running EM algorithm", flush=True)
-    EmAlgo(readsTable, allReadsNum, thresholdTpm=args.tpm, outputName=outname, printResult=args.printem)
+    if not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
+        print("Running EM algorithm", flush=True)
+        EmAlgo(readsTable, allReadsNum, thresholdTpm=args.tpm, outputName=outname, printResult=args.printem)
 
-    predictions = predict_genotype_from_MLE(outname + ".results.tsv")
+    predictions = predict_genotype_from_MLE(outname + ".results.tsv", outname, base_outname, training_csv=args.training)
     predicted_types = predictions.index.values.tolist()
 
     print("PREDICTED HLA TYPES:")
@@ -273,9 +278,16 @@ def main():
         print(" " + predicted_type)
     print()
 
-    plot_coverage_maps(f"{outname}.cov_plot_args.json", predicted_types)
+    if not args.suppress_figs:
+        # TODO remove try/except
+        try:
+            plot_pie_charts(outname + ".final_predictions.csv", outname + ".results.tsv", outname)
+            plot_coverage_maps(outname + ".cov_plot_args.json", predicted_types)
+        except:
+            pass
 
-    sys.exit(0)
+    # TODO restore
+    # sys.exit(0)
 
 
 if __name__ == '__main__':

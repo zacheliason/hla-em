@@ -1,4 +1,5 @@
 VOLUME_PATH="/data"
+VOLUME_PATH="/Users/zeliason/Desktop/hla-em"
 
 # Install required Python packages
 pip3 install matplotlib
@@ -14,6 +15,7 @@ for trial in {0..31}; do
     python3 "${VOLUME_PATH}/HLA_EM.py" \
         -t 4 \
         --shortcut \
+        --no_coverage_plots \
         -o "${OUTPUT_DIR}" \
         -s "${VOLUME_PATH}/EnsembleGenome_STAR_without_scaffolds" \
         -r "${VOLUME_PATH}/hla_gen.fasta" \

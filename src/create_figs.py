@@ -87,7 +87,6 @@ opti_single_scores = score_optitype_output("/Users/zacheliason/Downloads/hla-em/
 hla_em_single_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_single", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
 hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
 
-
 compare_tools(opti_paired_scores, opti_single_scores, hla_em_single_scores, hla_em_paired_scores)
 
 compare_within_tool(hla_em_paired_scores, 'HLA-EM Paired Reads')

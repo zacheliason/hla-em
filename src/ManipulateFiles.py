@@ -1,68 +1,199 @@
 from matplotlib import pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib import font_manager
 from matplotlib.text import Text
 import pandas as pd
 import numpy as np
+import colorsys
 import json
 import re
 import os
 
 
-def split_into_tiers(input_value):
-	if type(input_value) == str:
-		result = re.match(r'^(.*?)([a-zA-Z]*)$', input_value)
+def set_font(font_name="Work Sans"):
+	font_info = {
+		'dir': "_".join(font_name.split()),
+		'name': font_name
+	}
 
-		# Extracting captured groups
-		hla_code, expression = [result.group(1), result.group(2)] if result else [input_value, None]
+	fonts = font_manager.findSystemFonts(fontpaths=font_info['dir'])
+	for font in fonts:
+		font_manager.fontManager.addfont(font)
 
-		# Splitting the string based on a regex pattern and expanding into separate parts
-		tiers = re.split(r'[\*:]', hla_code, maxsplit=4)
+	fontname = font_info['name']
+	return fontname
 
-		tiers += [''] * (5 - len(tiers)) + [expression]
 
-		tiers = [x if x != "" else None for x in tiers]
+def split_string_into_tiers(input_value):
+	result = re.match(r'^(.*?)([a-zA-Z]*)$', input_value)
 
-		return tiers
+	# Extracting captured groups
+	hla_code, expression = [result.group(1), result.group(2)] if result else [input_value, None]
 
-	else:
-		df = input_value
+	# Splitting the string based on a regex pattern and expanding into separate parts
+	tiers = re.split(r'[\*:]', hla_code, maxsplit=4)
 
-		df[['HLA_code', 'expression']] = df['HLA_code'].str.extract(r'^(.*?)([a-zA-Z])*$')
-		expanded_columns = df['HLA_code'].str.split(r'\*|:', n=5, expand=True)
-		expanded_columns.columns = ['HLAletter', 'two_digit', 'four_digit', 'six_digit', 'eight_digit']
+	tiers += [''] * (5 - len(tiers)) + [expression]
 
-		# Concatenate the expanded columns with the original DataFrame
-		df = pd.concat([df, expanded_columns], axis=1)
-		front_columns = ['HLAletter', 'two_digit', 'four_digit', 'six_digit', 'eight_digit', 'expression']
-		df = df[front_columns + [x for x in df.columns if x not in front_columns]]
-		df = df.where(df.notnull(), None)
+	tiers = [x if x != "" else None for x in tiers]
 
-		return df
+	return tiers
+
+def split_into_tiers(df):
+	df[['hla_type', 'hla_code']] = df['HLAtype'].str.split(' ', expand=True)
+	df['hla_code'] = df['hla_code'].apply(lambda x: re.sub(r'[\(\)]', '', x))
+
+	df[['hla_code', 'expression']] = df['hla_code'].str.extract(r'^(.*?)([a-zA-Z])*$')
+	expanded_columns = df['hla_code'].str.split(r'\*|:', n=5, expand=True)
+	expanded_columns.columns = ['hla_letter', 'two_digit', 'four_digit', 'six_digit', 'eight_digit']
+
+	# Concatenate the expanded columns with the original DataFrame
+	df = pd.concat([df, expanded_columns], axis=1)
+	front_columns = ['hla_letter', 'two_digit', 'four_digit', 'six_digit', 'eight_digit', 'expression']
+	df = df[front_columns + [x for x in df.columns if x not in front_columns]]
+	df = df.where(df.notnull(), None)
+
+	return df
+
+
+# def plot_pie_charts(typesAll, lOrdAll, readProps, emProps, outputName):
+def plot_pie_charts(predicted_hla_path, em_results_path, outname):
+	def assign_color_dict(df):
+		green = (143 / 255, 194 / 255, 33 / 255)
+		green2 = (0.7764705882352941, 0.9686274509803922, 0.35294117647058826)
+		blue = (70 / 255, 183 / 255, 232 / 255)
+		blue2 = (0.4745098039215686, 0.9568627450980393, 1.0)
+		yellow = (252 / 255, 222 / 255, 50 / 255)
+		yellow2 = (1.0, 1.0, 0.4392156862745098)
+
+		alleles_dict = {}
+		for i, r in df[df['HLA_category'] != "Other Alleles"].iterrows():
+			if r['hla_letter'] not in alleles_dict:
+				alleles_dict[r['hla_letter']] = []
+
+			alleles_dict[r['hla_letter']].append(r['HLAtype'])
+
+		color_dict = {}
+		for letter, alleles in alleles_dict.items():
+			if letter == 'A':
+				for i in range(len(alleles)):
+					color_dict[alleles[i]] = green if i == 0 else green2
+			elif letter == 'B':
+				for i in range(len(alleles)):
+					color_dict[alleles[i]] = yellow if i == 0 else yellow2
+			elif letter == 'C':
+				for i in range(len(alleles)):
+					color_dict[alleles[i]] = blue if i == 0 else blue2
+
+		return color_dict
+
+	predicted_hla_df = pd.read_csv(predicted_hla_path)
+	em_results_df = pd.read_csv(em_results_path, sep='\t')
+
+	predicted_hla_df = split_into_tiers(predicted_hla_df)
+	em_results_df = split_into_tiers(em_results_df)
+
+	em_results_df = em_results_df.fillna(0)
+	em_results_df = em_results_df.sort_values("MLE_Probability", ascending=False)
+	em_results_df = group_by_protein(em_results_df)
+
+	em_results_df['HLA_category'] = em_results_df['HLAtype']
+	em_results_df.loc[~em_results_df['HLA_category'].isin(predicted_hla_df['HLAtype']), 'HLA_category'] = 'Other Alleles'
+
+	em_results_df = em_results_df.reset_index(drop=True)
+	em_results_df['pie_label_filtered_reads'] = em_results_df.apply(lambda row: '{:.1f}%'.format(row['MappedProportion'] * 100) if row['HLA_category'] != "Other Alleles" else "", axis=1)
+	em_results_df['pie_label_mle'] = em_results_df.apply(lambda row: '{:.1f}%'.format(row['MLE_Probability'] * 100) if row['HLA_category'] != "Other Alleles" else "", axis=1)
+
+	plt.rcParams['font.family'] = set_font()
+	fig, axes = plt.subplots(1, 2, figsize=(10, 5), subplot_kw=dict(aspect="equal"))
+
+	color_dict = assign_color_dict(em_results_df)
+
+	greys = em_results_df[em_results_df['HLA_category'] == "Other Alleles"]
+	greys = greys.reset_index()
+	num_grey = len(greys)
+	grey_linspace = np.linspace(0.35, 0.65, num_grey)
+	sum_grey_mapped_proportion = '{:.1f}%'.format(greys['MappedProportion'].sum() * 100)
+	sum_grey_mle_probability = '{:.1f}%'.format(greys['MLE_Probability'].sum() * 100)
+
+	# Assign a color to each Other Allele
+	for i, r in greys.iterrows():
+		color_dict[r['HLAtype']] = plt.cm.Greys(grey_linspace[i])
+
+	for ax in axes:
+		ax.set_prop_cycle('color', [color_dict[x] for x in em_results_df['HLAtype']])
+
+	plot_pie(axes[0], em_results_df['MappedReads'], em_results_df['pie_label_filtered_reads'], sum_grey_mapped_proportion)
+	plot_pie(axes[1], em_results_df['MLE_Probability'], em_results_df['pie_label_mle'], sum_grey_mle_probability)
+
+	axes[1].legend(labels=em_results_df['HLA_category'])
+	legend = axes[1].get_legend()
+	handles = legend.legend_handles
+	labels = legend.texts
+
+	# Remove duplicate legend entries
+	seen = []
+	new_labels = []
+	new_handles = []
+	for i, label in enumerate(labels):
+		if label.get_text() not in seen:
+			seen.append(label.get_text())
+			new_labels.append(label.get_text())
+			new_handles.append(handles[i])
+
+	# Reset legend
+	axes[1].legend(new_handles, new_labels, title="HLA Types", loc="center left", frameon=False, bbox_to_anchor=(1, 0, 0.5, 1))
+
+	# Set titles for subplots
+	axes[0].set_title("Mapped Read Proportions")
+	axes[1].set_title("Maximum Likelihood Estimate")
+
+	# Adjust layout and save the figure
+	fig.subplots_adjust(wspace=0, right=0.8)
+	# fig.tight_layout(rect=[0, 0, 0.9, 0.9])
+	fig.tight_layout()
+	fig.savefig(outname + '.props.pdf')
+	plt.close(fig)
+
+
+def plot_pie(ax, props, labels, other_val=None):
+	wedges, texts = ax.pie(props)
+	other_alleles = []
+	for i, p in enumerate(wedges):
+		if labels[i] != "":
+			ang = (p.theta2 - p.theta1) / 2. + p.theta1
+			y = 0.8 * np.sin(np.deg2rad(ang))
+			x = 0.8 * np.cos(np.deg2rad(ang))
+			ax.annotate(labels[i], xy=(x, y), ha='center', va='center')
+		else:
+			other_alleles.append(p)
+
+	if other_val is not None:
+		ang = (other_alleles[-1].theta2 - other_alleles[0].theta1) / 2. + other_alleles[0].theta1
+		y = 0.7 * np.sin(np.deg2rad(ang))
+		x = 0.7 * np.cos(np.deg2rad(ang))
+		ax.annotate(other_val, xy=(x, y), ha='center', va='center')
 
 
 def group_by_protein(df):
-	df = df.sort_values(by=['MLE_Reads', 'HLA_code'], ascending=[False, True])
+	df = df.sort_values(by=['MLE_Reads', 'hla_code'], ascending=[False, True])
 
-	grouped = df.groupby(['HLAletter', 'two_digit', 'four_digit']).agg({
+	grouped = df.groupby(['hla_letter', 'two_digit', 'four_digit']).agg({
 		'HLAtype': 'first',
-		'HLA_type': 'first',
-		'HLA_code': 'first',
+		'hla_type': 'first',
+		'hla_code': 'first',
 		'MappedReads': 'sum',
 		'MappedProportion': 'sum',
 		'MLE_Reads': 'sum',
 		'MLE_Probability': 'sum'
 	}).reset_index().sort_values(by='MLE_Reads', ascending=False)
 
-	return grouped[['HLAtype', 'HLA_type', 'HLA_code', 'HLAletter', 'MappedReads', 'MappedProportion', 'MLE_Reads', 'MLE_Probability']]
+	return grouped[['HLAtype', 'hla_type', 'hla_code', 'hla_letter', 'MappedReads', 'MappedProportion', 'MLE_Reads', 'MLE_Probability']]
 
 
-def replace_smaller_allele(df):
-	doubled_ratio_threshold = 7
-	absent_ratio_threshold = 22
-	absent_threshold = .18
-
-	# Group the alleles by their "HLAletter" values
-	allele_groups = df.groupby("HLAletter")
+def replace_smaller_allele(df, trial_name=None, training_path=""):
+	# Group the alleles by their "hla_letter" values
+	allele_groups = df.groupby("hla_letter")
 
 	for group_name, group in allele_groups:
 		# If the group has more than one allele
@@ -71,48 +202,53 @@ def replace_smaller_allele(df):
 			allele1 = group.iloc[0].copy()
 			allele2 = group.iloc[1].copy()
 
-			# Calculate the ratio between the higher and lower MLE_Probability values
-			ratio = allele1['MLE_Probability'] / allele2['MLE_Probability']
+			if training_path != "":
+				with open(training_path, 'a') as f:
+					f.write("\t".join([trial_name, group_name, str(allele1['MLE_Probability']), str(allele2['MLE_Probability'])]) + "\n")
 
-			# If the ratio is greater than absent_ratio_threshold and neither allele's MLE_Probability is greater than
-			# the absent_threshold, delete the smaller allele
-			if ratio > absent_ratio_threshold:
-				# delete smaller allele
-				if allele1['MLE_Probability'] < absent_threshold and allele1['MLE_Probability'] < absent_threshold:
-					df = df.drop(allele2.name)
-					continue
+			ml1 = allele1['MLE_Probability']
+			ml2 = allele2['MLE_Probability']
+			ratio = ml1 / ml2
 
-			# If the ratio is greater than doubled_ratio_threshold, replace the smaller row with the larger one
-			if ratio > doubled_ratio_threshold:
-				# Adjust MLE_Probability accordingly
-				allele1['MLE_Probability'] = allele1['MLE_Probability'] / 2
-				df.loc[allele1.name, 'MLE_Probability'] = allele1['MLE_Probability']
+			# Choose whether to keep, drop, or copy the smaller allele from the larger based on the pair's relative MLE probabilities
+			action = predict_allele_action(ml1, ml2, ratio)
+
+			if action == "DROP":
+				df = df.drop(allele2.name)
+			elif action == "COPY":
+				allele1[['MLE_Probability', 'MappedProportion']] /= 2
+				allele1[['MLE_Reads', 'MappedReads']] //= 2
+
+				columns_to_update = ['MLE_Probability', 'MappedProportion', 'MLE_Reads', 'MappedReads']
+				df.loc[allele1.index, columns_to_update] = allele1[columns_to_update]
+
 				df.loc[allele2.name] = allele1
 
 	return df
 
 
-def predict_genotype_from_MLE(path, group_by_p=True):
-	# Step 1: Read the TSV file into a DataFrame
-	df = pd.read_csv(path, sep='\t')
+def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_csv, group_by_p=True):
+	training_path = training_csv
+	if not os.path.exists(training_path):
+		with open(training_path, 'w+') as f:
+			f.write("trial_name\thla_letter\tmle1\tmle2\n")
 
-	# Step 2: Extract the HLA type and MLE Probability columns
-	df[['HLA_type', 'HLA_code']] = df['HLAtype'].str.split(' ', expand=True)
-	df['HLA_code'] = df['HLA_code'].apply(lambda x: re.sub(r'[\(\)]', '', x))
+	# Step 1: Read the TSV file into a DataFrame
+	df = pd.read_csv(em_results_path, sep='\t')
 
 	df = split_into_tiers(df)
 	if group_by_p:
+		old_df = df.copy()
 		df = group_by_protein(df)
 
-
-	df = df[df['HLAletter'].isin(['A', 'B', 'C'])]
+	df = df[df['hla_letter'].isin(['A', 'B', 'C'])]
 
 	# Step 3: Filter out alleles based on a threshold MLE_Probability
 	threshold = 0.001  # Adjust the threshold as needed
 	df_filtered = df[df['MLE_Probability'] >= threshold]
 
 	# Step 4: Group alleles by their HLA type (A, B, or C)
-	groups = df_filtered.groupby('HLAletter')
+	groups = df_filtered.groupby('hla_letter')
 
 	# Step 5: Sort alleles within each group based on MLE Probability
 	sorted_groups = {key: group.sort_values(by='MLE_Probability', ascending=False) for key, group in groups}
@@ -136,13 +272,13 @@ def predict_genotype_from_MLE(path, group_by_p=True):
 				# sorting key prioritizes alleles with more matching sections relative to other alleles in mle_prop_group
 				# As a secondary sorting key, the alleles are sorted alphabetically
 				def custom_sort_key(code):
-					matching_counts = sorted([count_common_sections(code, other_code) for other_code in mle_prob_group['HLA_code']], reverse=True)
+					matching_counts = sorted([count_common_sections(code, other_code) for other_code in mle_prob_group['hla_code']], reverse=True)
 					sum_matching = sum(matching_counts[1:])
 
 					return (-sum_matching, code)
 
 				# Sort the DataFrame based on the custom sorting key
-				df_sorted = mle_prob_group.iloc[mle_prob_group['HLA_code'].map(custom_sort_key).argsort()]
+				df_sorted = mle_prob_group.iloc[mle_prob_group['hla_code'].map(custom_sort_key).argsort()]
 
 				# Select the top allele
 				hla_predictions.append(df_sorted.head(1))
@@ -150,12 +286,11 @@ def predict_genotype_from_MLE(path, group_by_p=True):
 	hla_prediction_df = pd.concat(hla_predictions)
 	hla_prediction_df.index = hla_prediction_df['HLAtype']
 
-	hla_prediction_df = replace_smaller_allele(hla_prediction_df)
+	hla_prediction_df = replace_smaller_allele(hla_prediction_df, trial_name=trial_name, training_path=training_path)
 
-	hla_prediction_df = hla_prediction_df.drop(columns=['HLAletter', "HLA_code", "HLA_type", "HLAtype"])
+	hla_prediction_df = hla_prediction_df.drop(columns=['hla_letter', "hla_code", "hla_type", "HLAtype"])
 
-	output_dir, _ = os.path.split(path)
-	hla_prediction_df.to_csv(os.path.join(output_dir, "final_predictions.csv"), index=True)
+	hla_prediction_df.to_csv(outname + ".final_predictions.csv", index=True)
 
 	return hla_prediction_df
 
@@ -168,8 +303,8 @@ def count_common_sections(pred_allele, exp_allele, include_length=False):
 	common_sections = 0
 
 	# Split the alleles into their respective sections, excluding letter and expression
-	pred_sections = split_into_tiers(pred_allele)[1:-1]
-	exp_sections = split_into_tiers(exp_allele)[1:-1]
+	pred_sections = split_string_into_tiers(pred_allele)[1:-1]
+	exp_sections = split_string_into_tiers(exp_allele)[1:-1]
 
 	pred_sections = [x for x in pred_sections if x is not None]
 	exp_sections = [x for x in exp_sections if x is not None]
@@ -419,6 +554,8 @@ def plot_coverage_maps(json_args_path, predicted_hla_types, covMapYmax=None):
 		hla_type = hlaRefID_to_type[refId]
 
 		fig, ax = plt.subplots(figsize=(9, 4))
+		plt.rcParams['font.family'] = set_font()
+
 		ax.plot(np.arange(seq_len), cov, 'k', lw=0.8)
 		ax.set_ylabel('Read coverage', fontsize=14, color='black')
 		ax.set_title(f"{hlaName} ({hla_type})")
@@ -476,6 +613,9 @@ def plot_coverage_maps(json_args_path, predicted_hla_types, covMapYmax=None):
 					y2end = max(gEnd, glabel.get_window_extent().x1)
 
 				gNameLast = gName
+
+		ax.spines['top'].set_visible(False)
+		ax.spines['right'].set_visible(False)
 
 		fig.tight_layout()
 		fig.savefig(f"{outputName}.{hlaName}.{hla_type}.cov.pdf", bbox_inches='tight', metadata=None)
@@ -536,6 +676,22 @@ def score_optitype_output(output_dir, alleles_path):
 	return results
 
 
+def predict_allele_action(mle1, mle2, ratio):
+	if mle2 <= 0.0345:
+		if mle1 <= 0.188:
+			return "DROP"
+		else:  # if mle1 > 0.188
+			return "COPY"
+	else:  # if mle2 > 0.0345
+		if mle2 <= 0.0519:
+			if ratio <= 3:
+				return "KEEP"
+			else:  # if mle2 > 0.0492
+				return "COPY"
+		else:  # if mle2 > 0.0519
+			return "KEEP"
+
+
 def score_output(output_dir, alleles_path):
 	# Load expected HLA alleles in from spreadsheet
 	hla_exp_df = pd.read_csv(alleles_path)
@@ -591,5 +747,13 @@ def score_output(output_dir, alleles_path):
 	return results
 
 
-# hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/output_paired", "/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/reference/allele_record.csv")
 # optitype_paired_scores = score_optitype_output("/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/optitype_paired_output", "/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/reference/allele_record.csv")
+
+
+# hla_em_paired_scores = score_output("/Users/zeliason/Desktop/hla-em/output_paired", "/Users/zeliason/Desktop/hla-em/reference/allele_record.csv")
+# print(hla_em_paired_scores['two_digit_score'].mean())
+# print(hla_em_paired_scores['four_digit_score'].mean())
+# print(hla_em_paired_scores['six_digit_score'].mean())
+# print(hla_em_paired_scores['eight_digit_score'].mean())
+#
+# print()

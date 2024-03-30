@@ -1,7 +1,6 @@
 #!rusr/bin/env python
 
-#from __future__ import print_function
-import matplotlib.pyplot as plt
+from src.ManipulateFiles import plot_pie_charts
 import pandas as pd
 import numpy as np
 import matplotlib
@@ -42,11 +41,6 @@ class mappedRead:
             count+=1
 
             
-def natural_order(l):
-    convert = lambda text: int(text) if text.isdigit() else text.lower()
-    alphanum_key = lambda key: [ convert(c) for c in re.split('([0-9]+)', key[1]) ]
-    return [i[0] for i in sorted(enumerate(l), key = alphanum_key)]
-
 
 def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', printResult=True, suppressOutputAndFigures=False):
     iterOut = None
@@ -213,105 +207,30 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
         print('Converged to < {:.1e} in {:d} iterations'.format(conVal, stepsOut))
 
         if output:
-
             df = pd.DataFrame(output_lines)
             df = df.sort_values('MLE_Probability', ascending=False)
             df.to_csv(outputName + ".results.tsv", sep='\t', index=False)
 
-            lOrd = natural_order(types)
-            lOrdAll = natural_order(typesAll)
-
-            sorted_lines = sorted(output, key=lambda line: line.split('\t')[-1], reverse=True)
-
             # Only print and write results to output file if specified
             if not suppressOutputAndFigures:
-                if printResult:
-                    print('Converged to < {:.1e} in {:d} iterations'.format(conVal, stepsOut))
-                    print('err\t{:.5f}'.format(errOut))
-                    print('HLAtype\tMappedReads\tMappedProportion\tMLE_Reads\tMLE_Probability')
-                    for i in lOrd:
-                        print(output[i])
-
-                # with open(outputName+'.results.tsv','w') as fOut:
-                #     # fOut.write('Converged to < {:.1e} in {:d} iterations\n'.format(conVal, stepsOut))
-                #     # fOut.write('err\t{:.5f}\n'.format(errOut))
-                #     fOut.write('HLAtype\tMappedReads\tMappedProportion\tMLE_Reads\tMLE_Probability\n')
-                #     # for i in lOrd:
-                #     #     fOut.write(output[i]+'\n')
-                #
-                #     for output_line in sorted_lines:
-                #         fOut.write(output_line + "\n")
-
                 # Write out read counts table
-                geneNamesList = sorted(geneNamesSet)
-                with open(outputName+'.readCounts.tsv','w') as fCounts:
-                    fCounts.write('Type\t'+'\t'.join(geneNamesList)+'\n')
-                    for hlaType in hlaGeneReadCountsDict:
-                        fCounts.write(hlaType)
-                        for gene in geneNamesList:
-                            if gene in hlaGeneReadCountsDict[hlaType]:
-                                fCounts.write('\t{:.3f}'.format(hlaGeneReadCountsDict[hlaType][gene]))
-                            else:
-                                fCounts.write('\t0')
-                        fCounts.write('\n')
-
-                # Plot pie charts of probabilities, before and after
-                ordTypes = list(map(typesAll.__getitem__, lOrdAll))
-                ordReadProps = list(map(readProps.__getitem__, lOrdAll))
-                ordEmProps = list(map(emProps.__getitem__, lOrdAll))
-                ordRpLabels = ['{}\n{:.1f}%'.format(typ, ordReadProps[i]*100) if ordReadProps[i] > 0.01 else '' for i,typ in enumerate(ordTypes)]
-                ordEmLabels = ['{}\n{:.1f}%'.format(typ, ordEmProps[i]*100) if ordEmProps[i] > 0.01 else '' for i,typ in enumerate(ordTypes)]
-
-                # Create custom color map for pie charts
-                fig, axs = plt.subplots(1, 2, figsize=(12, 6), subplot_kw=dict(aspect="equal"))
-                axs[0].set_prop_cycle('color', plt.cm.gist_rainbow(np.linspace(0,1,len(typesAll))))
-                axs[1].set_prop_cycle('color', plt.cm.gist_rainbow(np.linspace(0,1,len(typesAll))))
-                wedges, texts = axs[0].pie(ordReadProps)
-                for i, p in enumerate(wedges):
-                    ang = (p.theta2 - p.theta1)/2. + p.theta1
-                    y = 0.6*np.sin(np.deg2rad(ang))
-                    x = 0.6*np.cos(np.deg2rad(ang))
-                    axs[0].annotate(ordRpLabels[i], xy=(x, y), ha='center', va='center')
-
-                wedges1, texts1 = axs[1].pie(ordEmProps)
-                for i, p in enumerate(wedges1):
-                    ang = (p.theta2 - p.theta1)/2. + p.theta1
-                    y = 0.6*np.sin(np.deg2rad(ang))
-                    x = 0.6*np.cos(np.deg2rad(ang))
-                    axs[1].annotate(ordEmLabels[i], xy=(x, y), ha='center', va='center')
-
-                axs[1].legend(wedges, ordTypes, title="Types", loc="center left", bbox_to_anchor=(1, 0, 0.5, 1))
-
-                axs[0].set_title("Mapped Read Proportions")
-                axs[1].set_title("Maximum Likelihood Estimate")
-
-                fig.subplots_adjust(wspace = 0, right = 0.8)
-                fig.tight_layout(rect=[0, 0, 0.9, 0.9])
-
-                fig.savefig(outputName+'.props.pdf')
-                plt.close(fig)
+                gene_read_counts_df = pd.DataFrame.from_dict(hlaGeneReadCountsDict, orient='index')
+                gene_read_counts_df = gene_read_counts_df.reindex(sorted(gene_read_counts_df.columns), axis=1)
+                gene_read_counts_df.fillna(0, inplace=True)
+                gene_read_counts_df.to_csv(outputName + '.readCounts.tsv', sep='\t', float_format='%.3f')
 
             print(f"{steps} steps to converge.")
-            # Return results for search algorithm to parse
-            returnOutput = ""
-            for i in lOrd:
-                returnOutput += output[i] + "\n"
-            return returnOutput
 
         else:
             with open(outputName+'.results.tsv','w') as fOut:
                 fOut.write('No HLA types detected\n')
             if printResult:
                 print('No HLA types detected')
-
-            return None
     else:
         with open(outputName+'.results.tsv','w') as fOut:
             fOut.write('No HLA types detected\n')
         if printResult:
             print('No HLA types detected')
-
-        return None
 
 
 def main(argv):
