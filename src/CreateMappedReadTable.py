@@ -307,13 +307,13 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
                     elif opCode in 'DN':
                         pos += opLength
 
-                # Mark any genes this read covers
-                if refId in hlaRefIdGeneDict:
-                    for gene in hlaRefIdGeneDict[refId]:
-                        gName, gStart, gEnd = gene
-                        gStart, gEnd = int(gStart), int(gEnd)
-                        if np.any(np.logical_and(pos >= gStart, pos < gEnd)):
-                            geneSet.add(gName)
+                # # Mark any genes this read covers
+                # if refId in hlaRefIdGeneDict:
+                #     for gene in hlaRefIdGeneDict[refId]:
+                #         gName, gStart, gEnd = gene
+                #         gStart, gEnd = int(gStart), int(gEnd)
+                #         if np.any(np.logical_and(pos >= gStart, pos < gEnd)):
+                #             geneSet.add(gName)
 
     hlaRefIdGeneDict = {}
     hlaRefIdCovArrays = {}
@@ -324,9 +324,14 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
     readNames_to_aligns, hlaRefIdMappedSet, hlaRefID_to_totalMappedReads = load_alignments_from_bam(hlaBams)
 
     if not suppressOutputAndFigures:
+        # only create coverage plots for ref_ids mapping to at least a fifth of the maximum number of reads
+        threshold = max(hlaRefID_to_totalMappedReads.values()) / 3
+        top_ref_ids = {x for x in hlaRefIdMappedSet if hlaRefID_to_totalMappedReads[x] >= threshold}
+
         for readName, readAlign in readNames_to_aligns.items():
             for refId in readAlign.hlaRefID_to_AlignInfo:
-                update_coverage(refId, readAlign)
+                if refId in top_ref_ids:
+                    update_coverage(refId, readAlign)
 
         for refId, covArray in hlaRefIdCovArrays.items():
             hlaRefIdCovDict[refId] = covArray.tolist()
@@ -334,8 +339,8 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
         with open(f'{outputName}.cov_plot_args.json', 'w') as outFile:
             json_obj = {
                 "hlaRefIdCovDict": hlaRefIdCovDict,
-                "hlaRefID_to_seq": hlaRefID_to_seq,
-                "hlaRefID_to_type": hlaRefID_to_type,
+                "hlaRefID_to_length": {k: len(v) for k, v in hlaRefID_to_seq.items() if k in top_ref_ids},
+                "hlaRefID_to_type": {k: v for k, v in hlaRefID_to_type.items() if k in top_ref_ids},
                 "hlaRefIdGeneDict": hlaRefIdGeneDict,
                 "outputName": outputName
             }

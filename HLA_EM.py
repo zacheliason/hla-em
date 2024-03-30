@@ -1,3 +1,5 @@
+import traceback
+
 from src.ManipulateFiles import predict_genotype_from_MLE, filter_fasta, plot_coverage_maps, plot_pie_charts
 from src.CreateMappedReadTable import mapReads
 from src.EMstep import EmAlgo
@@ -248,7 +250,7 @@ def main(args=None):
 
     # Clean unneeded intermediary output and files
     if not args.keepint:
-        allowed_extensions = {'.bam', '.tsv', '.pdf', '.csv', '.fastq', '.fq'}
+        allowed_extensions = {'.bam', '.tsv', '.pdf', '.csv', '.fastq', '.fq', '.json'}
 
         # Clean both samples and output folders
         directories_to_clean = [os.path.split(reads_dir)[0], args.outname]
@@ -284,6 +286,7 @@ def main(args=None):
             plot_pie_charts(outname + ".final_predictions.csv", outname + ".results.tsv", outname)
             plot_coverage_maps(outname + ".cov_plot_args.json", predicted_types)
         except:
+            print(traceback.format_exc())
             pass
 
     # TODO restore
