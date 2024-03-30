@@ -1,6 +1,4 @@
-import re
-
-from src.ManipulateFiles import predict_genotype_from_MLE, filter_fasta, score_output
+from src.ManipulateFiles import predict_genotype_from_MLE, filter_fasta, plot_coverage_maps
 from src.CreateMappedReadTable import mapReads
 from src.EMstep import EmAlgo
 from whichcraft import which
@@ -9,14 +7,16 @@ import argparse as argp
 import shutil
 import sys
 import os
+import re
+
 
 __version__ = "1.0.2"
 
 # # TODO remove
-os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
+# os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
 
 def prereqs():
-    programs = ["python3", "samtools", "STAR"]
+    programs = ["python3", "samtools"]#, "STAR"]
     ready = True
 
     for i in range(0, len(programs)):
@@ -83,6 +83,21 @@ def indexReferenceGenes(genomeDir, genomeFastaFiles, genomeSAindexNbases, outnam
          # "--runThreadN {}".format(args.threads),
          "--genomeSAindexNbases {}".format(genomeSAindexNbases)])
 
+def get_read_counts_from_log(filepath):
+    with open(filepath, 'r') as logFile:
+        total_pattern = r"Number of input reads \|	(\d+)"
+        unmapped_pattern = r"Number of reads unmapped: ((too short)|(other)) \|\s+(\d+)"
+
+        log_contents = logFile.read()
+
+        try:
+            total_reads = int(re.findall(total_pattern, log_contents)[0])
+            unmapped_reads = sum([int(x[3]) for x in re.findall(unmapped_pattern, log_contents)])
+        except:
+            raise RuntimeError('allReadsNum not found')
+
+        return total_reads, unmapped_reads
+
 
 def main():
     installDir = os.path.dirname(os.path.abspath(__file__))
@@ -121,6 +136,7 @@ def main():
     reads_dir, reads_basename = os.path.split(args.reads1)
     reads_dir += "/out"
 
+    # TODO remove shortcut
     if args.shortcut and os.path.exists(os.path.join(args.outname, 'final_predictions.csv')):
         print(f"final predictions already exists! Taking shortcut :)")
         exit(0)
@@ -164,27 +180,11 @@ def main():
 
             os.rename(reads_dir + '.Unmapped.out.mate1', reads_dir + '.Unmapped.out.mate1.fastq')
             os.rename(reads_dir + '.Log.final.out', outname + ".Log.final.out")
-        else:
-            print('taking shortcut\n')
 
+        allReadsNum, unmappedReadsNum = get_read_counts_from_log(outname + ".Log.final.out")
+        print(f"{unmappedReadsNum} reads unmapped out of {allReadsNum} reads total")
 
-        with open('{}.Log.final.out'.format(outname),'r') as logFile:
-            total_pattern = r"Number of input reads \|	(\d+)"
-            unmapped_pattern = r"Number of reads unmapped: ((too short)|(other)) \|\s+(\d+)"
-
-            logFileContents = logFile.read()
-
-            try:
-                total_reads = int(re.findall(total_pattern, logFileContents)[0])
-                unmapped_reads = sum([int(x[3]) for x in re.findall(unmapped_pattern, logFileContents)])
-            except:
-                print("ERROR!!!!")
-                raise RuntimeError('allReadsNum NOT FOUND!!!!!!!!!!')
-
-            print(f"{unmapped_reads} reads unmapped out of {total_reads} reads total.")
-
-            allReadsNum = total_reads
-
+        # TODO remove shortcut
         if not args.shortcut or not os.path.exists('{}.1.Aligned.out.bam'.format(outname)):
             print("Aligning reads to HLA genomes")
             cmd(["STAR",
@@ -203,12 +203,11 @@ def main():
                  "--winAnchorMultimapNmax 1000",
 
                  "--outFileNamePrefix {}.1.".format(outname)])
-        else:
-            print("took second shortcut")
 
         hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
 
     else:
+        # TODO remove shortcut
         if not args.shortcut or not (os.path.exists(reads_dir + '.Unmapped.out.mate1.fastq') and os.path.exists('{}.Log.final.out'.format(outname)) and os.path.exists(os.path.exists(reads_dir + '.Unmapped.out.mate2.fastq'))):
             print("Aligning paired reads to human genome")
             cmd(argsHumanAlignSTAR + ["--readFilesIn {} {}".format(args.reads1, args.reads2)])
@@ -217,19 +216,11 @@ def main():
             os.rename(reads_dir + '.Unmapped.out.mate2', reads_dir + '.Unmapped.out.mate2.fastq')
 
             os.rename(reads_dir + '.Log.final.out', outname + ".Log.final.out")
-        else:
-            print('taking shortcut')
 
-        with open('{}.Log.final.out'.format(outname),'r') as logFile:
-            for line in logFile:
-                line = line.strip()
-                if line.startswith('Number of input reads'):
-                    allReadsNum = int(line.split()[-1])
-                    print(f"allReadsNum: {allReadsNum}")
-                    print(line)
-                    print()
-                    break
+        allReadsNum, unmappedReadsNum = get_read_counts_from_log(outname + ".Log.final.out")
+        print(f"{unmappedReadsNum} reads unmapped out of {allReadsNum} reads total")
 
+        # TODO remove shortcut
         if not args.shortcut or not (os.path.exists('{}.1.Aligned.out.bam'.format(outname))):
             print("Aligning reads to HLA genomes")
 
@@ -252,42 +243,6 @@ def main():
                  "--outFileNamePrefix {}.1.".format(outname)])
         hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
 
-        # TODO TEST PAIRED READS FUNCTIONALITY
-        # cmd(["STAR",
-        #      "--genomeDir {path}".format(path=args.starHLA),
-        #      "--readFilesIn {sampleName}.Unmapped.out.mate1.fastq".format(sampleName=reads_dir),
-        #      "--runThreadN {}".format(args.threads),
-        #      "--twopassMode Basic",
-        #      "--outSAMtype BAM Unsorted",
-        #      "--outSAMattributes NH HI NM MD AS XS",
-        #
-        #      "--outFilterScoreMinOverLread 0",
-        #      "--outFilterMatchNminOverLread 0",
-        #      "--outFilterMatchNmin 0",
-        #      "--outFilterMultimapNmax 999",
-        #      "--outFilterMismatchNoverLmax 0.08",
-        #      "--winAnchorMultimapNmax 1000",
-        #
-        #      "--outFileNamePrefix {}.1.".format(outname)])
-        # hlaBams.append('{}.1.Aligned.out.bam'.format(outname))
-        # cmd(["STAR",
-        #      "--genomeDir {path}".format(path=args.starHLA),
-        #      "--readFilesIn {sampleName}.Unmapped.out.mate2.fastq".format(sampleName=reads_dir),
-        #      "--runThreadN {}".format(args.threads),
-        #      "--twopassMode Basic",
-        #      "--outSAMtype BAM Unsorted",
-        #      "--outSAMattributes NH HI NM MD AS XS",
-        #
-        #      "--outFilterScoreMinOverLread 0",
-        #      "--outFilterMatchNminOverLread 0",
-        #      "--outFilterMatchNmin 0",
-        #      "--outFilterMultimapNmax 999",
-        #      "--outFilterMismatchNoverLmax 0.08",
-        #      "--winAnchorMultimapNmax 1000",
-        #
-        #      "--outFileNamePrefix {}.2.".format(outname)])
-        # hlaBams.append('{}.2.Aligned.out.bam'.format(outname))
-
     # Clean unneeded intermediary output and files
     if not args.keepint:
         allowed_extensions = {'.bam', '.tsv', '.pdf', '.csv', '.fastq', '.fq'}
@@ -307,16 +262,18 @@ def main():
     print("Creating read table", flush=True)
     readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation)
 
-    # save readsTable to file
-    with open(outname + ".readsTable.tsv", "w") as f:
-        for line in readsTable:
-            f.write(line + "\n")
-
     print("Running EM algorithm", flush=True)
     EmAlgo(readsTable, allReadsNum, thresholdTpm=args.tpm, outputName=outname, printResult=args.printem)
-    predictions = predict_genotype_from_MLE(outname + ".results.tsv")
 
-    print(predictions)
+    predictions = predict_genotype_from_MLE(outname + ".results.tsv")
+    predicted_types = predictions.index.values.tolist()
+
+    print("PREDICTED HLA TYPES:")
+    for predicted_type in predicted_types:
+        print(" " + predicted_type)
+    print()
+
+    plot_coverage_maps(f"{outname}.cov_plot_args.json", predicted_types)
 
     sys.exit(0)
 

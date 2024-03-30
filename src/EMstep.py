@@ -16,13 +16,9 @@ matplotlib.use('Agg')
 # Difference value between successive loglikelihoods below which algorithm is deemed to have converged
 conVal = 1e-4
 
-numIter = 5 #0
+numIter = 5
 maxSteps = 500
 
-# TODO delete
-def save_mr(mr, hlas, name="mapped_reads.csv"):
-    df = pd.DataFrame([{'hla': x.hlaType, 'reads_mapped': x.readNum} for x in mr]).sort_values('reads_mapped')
-    df[df['hla'].isin(hlas)].to_csv(name, index=False)
 
 class mappedRead:
     def __init__(self, inputList):
@@ -57,11 +53,11 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
     mappedReads = []
     totalReads = 0
     uniqReads = int(readsTable[1].split('\t')[0])
-    isReadAmbig = readsTable[1].split('\t')[1:]
+    isReadAmbig = [x for x in readsTable[1].split('\t')[1:] if x != ""]
     for line in readsTable[2:]:
         line = line.split('\t')
         mappedReads.append(mappedRead(line))
-        totalReads+=mappedReads[-1].readNum
+        totalReads += mappedReads[-1].readNum
 
     if mappedReads:
         # Initialize EM algorithm
@@ -213,9 +209,6 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
                     typesAll.append(hlaName)
                     readProps.append(float(hla.readNum)/totalReads)
                     emProps.append(0.0)
-
-        save_mr(mappedReads, hlas=typesAll, name=outputName + 'before_em.csv')
-        save_mr(mappedReads, hlas=types, name=outputName + 'after_em.csv')
 
         print('Converged to < {:.1e} in {:d} iterations'.format(conVal, stepsOut))
 

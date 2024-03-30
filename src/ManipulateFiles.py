@@ -1,4 +1,9 @@
+from matplotlib import pyplot as plt
+from matplotlib.lines import Line2D
+from matplotlib.text import Text
 import pandas as pd
+import numpy as np
+import json
 import re
 import os
 
@@ -52,7 +57,7 @@ def group_by_protein(df):
 
 
 def replace_smaller_allele(df):
-	doubled_ratio_threshold = 9
+	doubled_ratio_threshold = 7
 	absent_ratio_threshold = 22
 	absent_threshold = .18
 
@@ -384,6 +389,97 @@ def filter_fasta(input_file, output_file):
 				outfile.write('>%s\n%s\n' % (' '.join(alleles), sequence))
 
 	print(f"filtered {alleles_kept}/{total_alleles} alleles")
+
+
+def plot_coverage_maps(json_args_path, predicted_hla_types, covMapYmax=None):
+	with open(json_args_path) as json_args_file:
+		json_args = json.load(json_args_file)
+
+	hlaRefIdCovDict = json_args['hlaRefIdCovDict']
+	hlaRefID_to_seq = json_args['hlaRefID_to_seq']
+	hlaRefID_to_type = json_args['hlaRefID_to_type']
+	hlaRefIdGeneDict = json_args['hlaRefIdGeneDict']
+	outputName = json_args['outputName']
+
+	# Clean args
+	os.remove(json_args_path)
+
+	annotColorDict = {'E1': 'g', 'E2': 'gray', 'E3': 'y', 'E4': 'r', 'E5': 'orange', 'E6': 'b', 'E7': 'm', 'E8': 'c', 'L1': 'indigo', 'L2': 'brown'}
+	annotColors = ['maroon', 'navy', 'pink', 'g', 'gray', 'k', 'y', 'r', 'orange', 'b', 'm', 'c', 'indigo']
+
+	annotScale = 1.3
+
+	for refId in predicted_hla_types:
+		if " " in refId:
+			refId = refId.split(" ")[0]
+
+		cov = hlaRefIdCovDict[refId]
+		seq_len = len(hlaRefID_to_seq[refId])
+		hlaName = refId.replace(' ', '')
+		hla_type = hlaRefID_to_type[refId]
+
+		fig, ax = plt.subplots(figsize=(9, 4))
+		ax.plot(np.arange(seq_len), cov, 'k', lw=0.8)
+		ax.set_ylabel('Read coverage', fontsize=14, color='black')
+		ax.set_title(f"{hlaName} ({hla_type})")
+
+		if covMapYmax:
+			ax.set_ylim(top=covMapYmax)
+
+		ypos1 = ax.get_ylim()[0] - (ax.get_ylim()[1] - ax.get_ylim()[0]) / 12 * annotScale
+		ypos2 = ax.get_ylim()[0] - (ax.get_ylim()[1] - ax.get_ylim()[0]) / 7.9 * annotScale
+		ypos3 = ax.get_ylim()[0] - (ax.get_ylim()[1] - ax.get_ylim()[0]) / 5.8 * annotScale
+		yposlab1 = ax.get_ylim()[0] - (ax.get_ylim()[1] - ax.get_ylim()[0]) / 8.5 * annotScale
+		yposlab2 = ax.get_ylim()[0] - (ax.get_ylim()[1] - ax.get_ylim()[0]) / 6.2 * annotScale
+		yposlab3 = ax.get_ylim()[0] - (ax.get_ylim()[1] - ax.get_ylim()[0]) / 4.8 * annotScale
+
+		glines = []
+		glabels = []
+		y1end = 0
+		y2end = 0
+		ic = 0
+		gNameLast = ''
+
+		if refId in hlaRefIdGeneDict:
+			for gene in hlaRefIdGeneDict[refId]:
+				gName, gStart, gEnd = gene[0], int(gene[1]), int(gene[2])
+
+				tname1 = gName[:2].upper()
+				tname2 = gName[-2:].upper()
+				if (tname1 in annotColorDict and (len(gName) < 3 or gName[2] not in '^*')):
+					gc = annotColorDict[tname1]
+				elif (tname2 in annotColorDict and (len(gName) < 3 or gName[-3] not in '^*')):
+					gc = annotColorDict[tname2]
+				else:
+					if gName != gNameLast:
+						ic += 1
+					gc = annotColors[ic % len(annotColors)]
+
+				if gStart >= y1end:
+					ypos = ypos1
+					yposlab = yposlab1
+				elif gStart >= y2end:
+					ypos = ypos2
+					yposlab = yposlab2
+				else:
+					ypos = ypos3
+					yposlab = yposlab3
+
+				gline = Line2D([gStart, gEnd], [ypos, ypos], color=gc, linewidth=2)
+				glines.append(ax.add_line(gline))
+				glabel = Text(gStart, yposlab, gName)
+				glabels.append(ax.add_artist(glabel))
+
+				if ypos == ypos1:
+					y1end = max(gEnd, glabel.get_window_extent().x1)
+				elif ypos == ypos2:
+					y2end = max(gEnd, glabel.get_window_extent().x1)
+
+				gNameLast = gName
+
+		fig.tight_layout()
+		fig.savefig(f"{outputName}.{hlaName}.{hla_type}.cov.pdf", bbox_inches='tight', metadata=None)
+		plt.close(fig)
 
 
 def score_optitype_output(output_dir, alleles_path):

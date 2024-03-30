@@ -1,4 +1,4 @@
-VOLUME_PATH="/Users/zeliason/Desktop/hla-em"
+VOLUME_PATH="/Users/zacheliason/Downloads/hla-em"
 
 for trial in {0..19}; do
     TRIAL_DIR="${VOLUME_PATH}/reference/samples/trial_${trial}"

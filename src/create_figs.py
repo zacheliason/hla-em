@@ -3,20 +3,17 @@ from matplotlib.ticker import FuncFormatter
 from matplotlib import pyplot as plt
 import os
 
-opti_paired_scores = score_optitype_output("/Users/zeliason/Desktop/hla-em/optitype_paired_output", "/Users/zeliason/Desktop/hla-em/reference/allele_record.csv")
-opti_single_scores = score_optitype_output("/Users/zeliason/Desktop/hla-em/optitype_single_output", "/Users/zeliason/Desktop/hla-em/reference/allele_record.csv")
-hla_em_single_scores = score_output("/Users/zeliason/Desktop/hla-em/output_single", "/Users/zeliason/Desktop/hla-em/reference/allele_record.csv")
-hla_em_paired_scores = score_output("/Users/zeliason/Desktop/hla-em/output_paired", "/Users/zeliason/Desktop/hla-em/reference/allele_record.csv")
-
 
 def percent_formatter(x, pos):
     return f'{x * 100:.0f}%'
 
 
 def compare_within_tool(df, title):
-    selected_columns = ['allele_group_score', 'protein_score', 'coding_score', 'noncoding_score']
+    selected_columns = ['two_digit_score', 'four_digit_score', 'six_digit_score', 'eight_digit_score']
+
     if "Opti" in title:
         selected_columns = selected_columns[:2]
+
     mean_values = df[selected_columns].mean()
     columns = mean_values.index
     mean_scores = mean_values.values
@@ -25,7 +22,7 @@ def compare_within_tool(df, title):
 
     plt.bar(columns, mean_scores, color='xkcd:apple green')
 
-    plt.ylabel('Mean Protein Accuracy')
+    plt.ylabel(f'Mean Typing Accuracy')
     plt.title(f'Mean Prediction Accuracy for {title}')
 
     for i, v in enumerate(mean_scores):
@@ -46,7 +43,7 @@ def compare_within_tool(df, title):
 
 
 def compare_tools(opti_paired_scores, opti_single_scores, hla_em_single_scores, hla_em_paired_scores):
-    for metric in ['allele_group_score', 'protein_score']:
+    for metric in ['two_digit_score', 'four_digit_score']:
         type = " ".join(metric.split("_")[:-1]).title()
         mean_scores = {
             'Optitype Paired': opti_paired_scores[metric].mean(),
@@ -83,6 +80,12 @@ def compare_tools(opti_paired_scores, opti_single_scores, hla_em_single_scores, 
 
         figpath = os.path.join(os.path.expanduser("~/Downloads"), f"tool_comp_{metric}.png")
         plt.savefig(figpath, dpi=600)
+
+
+opti_paired_scores = score_optitype_output("/Users/zacheliason/Downloads/hla-em/optitype_paired_output", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
+opti_single_scores = score_optitype_output("/Users/zacheliason/Downloads/hla-em/optitype_single_output", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
+hla_em_single_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_single", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
+hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
 
 
 compare_tools(opti_paired_scores, opti_single_scores, hla_em_single_scores, hla_em_paired_scores)
