@@ -1,11 +1,10 @@
-import traceback
-
 from src.ManipulateFiles import predict_genotype_from_MLE, filter_fasta, plot_coverage_maps, plot_pie_charts
 from src.CreateMappedReadTable import mapReads
 from src.EMstep import EmAlgo
 from whichcraft import which
 import subprocess as subp
 import argparse as argp
+import traceback
 import shutil
 import sys
 import os
@@ -154,8 +153,8 @@ def main(args=None):
     outname = os.path.join(args.outname, base_outname)
 
     args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
-    # if not os.path.isdir(args.starHLA):
-    #     indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
+    if not os.path.isdir(args.starHLA):
+        indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
     if args.threads < 1:
         args.threads = 1
@@ -264,7 +263,7 @@ def main(args=None):
                     if extension.lower() not in allowed_extensions and "Log.final.out" not in filename:
                         os.remove(os.path.join(dir_to_clean, filename))
 
-    if not args.shortcut or not (os.path.exists('{}.readsTable.tsv'.format(outname))):
+    if not args.shortcut or not (os.path.exists('{}.mappedReads.tsv'.format(outname))):
         print("Creating read table", flush=True)
         readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation, suppressOutputAndFigures=args.suppress_figs)
 

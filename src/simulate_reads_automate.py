@@ -281,7 +281,7 @@ def create_large_tests():
         simulate_masked_reads(num_per_test_case, num_human_reads)
 
 def create_dummy_tests():
-    num_per_test_case = 3
+    num_per_test_case = 12
     num_hla_reads = 1500
 
     current_path = os.environ.get("PATH", "")
@@ -289,16 +289,16 @@ def create_dummy_tests():
     new_path = f"{current_path}:{home_dir}/.docker/bin"
     os.environ['PATH'] = new_path
 
-    loh_number = 1
-    num_reads = (num_hla_reads // 6) * (6 - loh_number)
-    # simulate hla reads using best case HLA alleles from TCGA data
-    simulate_hla_reads(num_per_test_case, num_reads, best_case=True, loh_number=loh_number)
-    # simulate hla reads using random HLA alleles from TCGA data
-    simulate_hla_reads(num_per_test_case, num_reads, best_case=False, loh_number=loh_number)
+    for loh_number in range(3):
+        num_reads = (num_hla_reads // 6) * (6 - loh_number)
+        if loh_number > 0:
+            num_per_test = num_per_test_case // 2
+        else:
+            num_per_test = num_per_test_case
 
-    loh_number = 2
-    num_reads = (num_hla_reads // 6) * (6 - loh_number)
-    simulate_hla_reads(num_per_test_case, num_reads, best_case=True, loh_number=loh_number)
-    simulate_hla_reads(num_per_test_case, num_reads, best_case=False, loh_number=loh_number)
+        # simulate hla reads using best case HLA alleles from TCGA data
+        simulate_hla_reads(num_per_test, num_reads, best_case=True, loh_number=loh_number)
+        # simulate hla reads using random HLA alleles from TCGA data
+        simulate_hla_reads(num_per_test, num_reads, best_case=False, loh_number=loh_number)
 
 create_dummy_tests()

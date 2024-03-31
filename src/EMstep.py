@@ -211,13 +211,13 @@ def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', prin
             df = df.sort_values('MLE_Probability', ascending=False)
             df.to_csv(outputName + ".results.tsv", sep='\t', index=False)
 
-            # Only print and write results to output file if specified
-            if not suppressOutputAndFigures:
-                # Write out read counts table
-                gene_read_counts_df = pd.DataFrame.from_dict(hlaGeneReadCountsDict, orient='index')
-                gene_read_counts_df = gene_read_counts_df.reindex(sorted(gene_read_counts_df.columns), axis=1)
-                gene_read_counts_df.fillna(0, inplace=True)
-                gene_read_counts_df.to_csv(outputName + '.readCounts.tsv', sep='\t', float_format='%.3f')
+            # # Only print and write results to output file if specified
+            # if not suppressOutputAndFigures:
+            #     # Write out read counts table
+            #     gene_read_counts_df = pd.DataFrame.from_dict(hlaGeneReadCountsDict, orient='index')
+            #     gene_read_counts_df = gene_read_counts_df.reindex(sorted(gene_read_counts_df.columns), axis=1)
+            #     gene_read_counts_df.fillna(0, inplace=True)
+            #     gene_read_counts_df.to_csv(outputName + '.readCounts.tsv', sep='\t', float_format='%.3f')
 
             print(f"{steps} steps to converge.")
 

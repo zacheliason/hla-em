@@ -4,16 +4,11 @@ from subprocess import Popen, PIPE
 import argparse as argp
 import pandas as pd
 import numpy as np
-import matplotlib
 import traceback
 import json
 import time
 import sys
-import os
 import re
-
-
-matplotlib.use('Agg')
 
 
 class AlignInfo:
@@ -132,7 +127,9 @@ def create_hla_read_matrix(readNames_to_aligns):
 def mask_non_max_values(lm_matrix, ambig_array):
     match_length_matrix = lm_matrix.copy()
 
-    max_values = np.max(match_length_matrix, axis=1, keepdims=True)
+    # max_values = np.max(match_length_matrix, axis=1, keepdims=True)
+    max_values = np.max(match_length_matrix.astype(float), axis=1, keepdims=True)
+
     mask = match_length_matrix == max_values
 
     # Also keep all unambiguous alignments
@@ -325,7 +322,12 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
 
     if not suppressOutputAndFigures:
         # only create coverage plots for ref_ids mapping to at least a fifth of the maximum number of reads
-        threshold = max(hlaRefID_to_totalMappedReads.values()) / 3
+        threshold = hlaRefID_to_totalMappedReads.values()
+        if len(threshold) > 0:
+            threshold = max(threshold) / 3
+        else:
+            print(hlaRefID_to_totalMappedReads)
+
         top_ref_ids = {x for x in hlaRefIdMappedSet if hlaRefID_to_totalMappedReads[x] >= threshold}
 
         for readName, readAlign in readNames_to_aligns.items():
@@ -394,6 +396,7 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
             nameLine += '\t\t\t\t' + readName
 
     outLine = str(mappedCount) + outLine
+    nameLine = nameLine[3:]
     outTable = [nameLine]
     outTable.append(outLine)
 
@@ -417,10 +420,9 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
             outTable.append(outLine)
 
 
-    if not suppressOutputAndFigures:
-        with open(outputName + '.mappedReads.tsv', 'w') as outFile:
-            for line in outTable:
-                outFile.write(str(line) + '\n')
+    with open(outputName + '.mappedReads.tsv', 'w') as outFile:
+        for line in outTable:
+            outFile.write(str(line) + '\n')
 
     return outTable
 

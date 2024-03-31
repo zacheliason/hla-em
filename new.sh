@@ -1,21 +1,23 @@
 VOLUME_PATH="/data"
-VOLUME_PATH="/Users/zeliason/Desktop/hla-em"
+#VOLUME_PATH="/Users/zeliason/Desktop/hla-em"
 
 # Install required Python packages
-pip3 install matplotlib
+#pip3 install matplotlib
 pip3 install whichcraft
+#pip3 install matplotlib==3.4.3
 
-for trial in {0..31}; do
+for trial in {0..47}; do
     TRIAL_DIR="${VOLUME_PATH}/reference/samples/trial_${trial}"
 
     echo ""
     echo "now working on ${TRIAL_DIR}"
-    OUTPUT_DIR="${VOLUME_PATH}/output_paired/trial_${trial}"
+    OUTPUT_DIR="${VOLUME_PATH}/output_training/trial_${trial}"
 
     python3 "${VOLUME_PATH}/HLA_EM.py" \
         -t 4 \
         --shortcut \
-        --no_coverage_plots \
+        --suppress_figs \
+        --training ${VOLUME_PATH}/output_training/training.csv \
         -o "${OUTPUT_DIR}" \
         -s "${VOLUME_PATH}/EnsembleGenome_STAR_without_scaffolds" \
         -r "${VOLUME_PATH}/hla_gen.fasta" \

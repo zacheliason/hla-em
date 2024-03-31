@@ -1,18 +1,19 @@
 from matplotlib import pyplot as plt
-from matplotlib.lines import Line2D
 from matplotlib import font_manager
-from matplotlib.text import Text
 import pandas as pd
 import numpy as np
-import colorsys
 import json
 import re
 import os
 
 
 def set_font(font_name="Work Sans"):
+	installDir = os.path.dirname(os.path.abspath(__file__))
+	parent_dir = os.path.dirname(installDir)
+	font_dir = os.path.join(parent_dir, "_".join(font_name.split()))
+
 	font_info = {
-		'dir': "_".join(font_name.split()),
+		'dir': font_dir,
 		'name': font_name
 	}
 
@@ -128,7 +129,7 @@ def plot_pie_charts(predicted_hla_path, em_results_path, outname):
 
 	axes[1].legend(labels=em_results_df['HLA_category'])
 	legend = axes[1].get_legend()
-	handles = legend.legend_handles
+	handles = legend.legendHandles
 	labels = legend.texts
 
 	# Remove duplicate legend entries
@@ -220,7 +221,13 @@ def replace_smaller_allele(df, trial_name=None, training_path=""):
 				allele1[['MLE_Reads', 'MappedReads']] //= 2
 
 				columns_to_update = ['MLE_Probability', 'MappedProportion', 'MLE_Reads', 'MappedReads']
-				df.loc[allele1.index, columns_to_update] = allele1[columns_to_update]
+				# print()
+				# print(allele1.index)
+				# print(allele1.name)
+				# print(df.columns)
+				# print(df.index)
+				# print()
+				df.loc[allele1.name, columns_to_update] = allele1[columns_to_update]
 
 				df.loc[allele2.name] = allele1
 
@@ -228,14 +235,14 @@ def replace_smaller_allele(df, trial_name=None, training_path=""):
 
 
 def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_csv, group_by_p=True):
-	training_path = training_csv
-	if not os.path.exists(training_path):
-		with open(training_path, 'w+') as f:
-			f.write("trial_name\thla_letter\tmle1\tmle2\n")
-	else:
-		sep = "," if training_path.endswith(".csv") else "\t"
-		training_df = pd.read_csv(training_path, sep=sep).drop_duplicates()
-		training_df.to_csv(training_path, index=False, sep=sep)
+	if training_csv != "":
+		if not os.path.exists(training_csv):
+			with open(training_csv, 'w+') as f:
+				f.write("trial_name\thla_letter\tmle1\tmle2\n")
+		else:
+			sep = "," if training_csv.endswith(".csv") else "\t"
+			training_df = pd.read_csv(training_csv, sep=sep).drop_duplicates()
+			training_df.to_csv(training_csv, index=False, sep=sep)
 
 	# Step 1: Read the TSV file into a DataFrame
 	df = pd.read_csv(em_results_path, sep='\t')
@@ -290,7 +297,7 @@ def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_csv
 	hla_prediction_df = pd.concat(hla_predictions)
 	hla_prediction_df.index = hla_prediction_df['HLAtype']
 
-	hla_prediction_df = replace_smaller_allele(hla_prediction_df, trial_name=trial_name, training_path=training_path)
+	hla_prediction_df = replace_smaller_allele(hla_prediction_df, trial_name=trial_name, training_path=training_csv)
 
 	hla_prediction_df = hla_prediction_df.drop(columns=['hla_letter', "hla_code", "hla_type", "HLAtype"])
 
@@ -562,7 +569,7 @@ def plot_coverage_maps(json_args_path, predicted_hla_types, covMapYmax=None):
 		ax.spines['right'].set_visible(False)
 
 		fig.tight_layout()
-		fig.savefig(f"{outputName}.{hlaName}.{hla_type}.cov.pdf", bbox_inches='tight', metadata=None)
+		fig.savefig(f"{outputName}.{hlaName}.{hla_type.replace(':', '.')}.cov.pdf", bbox_inches='tight', metadata=None)
 		plt.close(fig)
 
 	# Clean args
