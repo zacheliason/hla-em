@@ -321,7 +321,7 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName
     readNames_to_aligns, hlaRefIdMappedSet, hlaRefID_to_totalMappedReads = load_alignments_from_bam(hlaBams)
 
     if not suppressOutputAndFigures:
-        # only create coverage plots for ref_ids mapping to at least a fifth of the maximum number of reads
+        # only create coverage plots for ref_ids mapping to at least a third of the maximum number of reads
         threshold = hlaRefID_to_totalMappedReads.values()
         if len(threshold) > 0:
             threshold = max(threshold) / 3
@@ -441,14 +441,7 @@ def main(argv):
     if args.bam2 != "not supplied":
         hlaBams += [args.bam2]
 
-    # # hlaBams = ['/Users/zacheliason/Downloads/hla-em/output/trial_1/trial_1.1.Aligned.out.bam']
-    # hlaBams = ['/Users/zacheliason/Downloads/hla-em/output_paired/trial_0/trial_0.1.Aligned.out.bam']
-    # hlaRefPath = '/Users/zacheliason/Downloads/hla_gen.fasta'
-    # filterLowComplex = True
-    # outname = '/Users/zacheliason/Downloads/hla-em/'
-    # outTable = mapReads(hlaBams, hlaRefPath=hlaRefPath, filterLowComplex=filterLowComplex, outputName=outname, suppressOutputAndFigures=False)
-
-    outTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
+    mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
 
 
 if __name__ == "__main__":

@@ -118,7 +118,7 @@ def em_component(read_hits_matrix, lm_matrix, le_matrix, max_steps=500, conv_val
 
                 l_new += masked_log_values.sum()
 
-            print(f"\titeration: {iteration_number + 1}/{num_iter}, convergence value: {l_new - l}, solution found: {converged_once}", end='\r')
+            print(f"\titeration: {iteration_number + 1}/{num_iter}, convergence value: {round(l_new - l, 6)}, solution found: {converged_once}", end='\r')
 
             if l_new - l < conv_val:
                 converged = True

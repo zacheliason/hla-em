@@ -729,12 +729,12 @@ def score_output(output_dir, alleles_path):
 
 
 # optitype_paired_scores = score_optitype_output("/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/optitype_paired_output", "/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/reference/allele_record.csv")
+# hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
+hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em-sat/reference/allele_record.csv")
 
+print(hla_em_paired_scores['two_digit_score'].mean())
+print(hla_em_paired_scores['four_digit_score'].mean())
+print(hla_em_paired_scores['six_digit_score'].mean())
+print(hla_em_paired_scores['eight_digit_score'].mean())
 
-# hla_em_paired_scores = score_output("/Users/zeliason/Desktop/hla-em/output_paired", "/Users/zeliason/Desktop/hla-em/reference/allele_record.csv")
-# print(hla_em_paired_scores['two_digit_score'].mean())
-# print(hla_em_paired_scores['four_digit_score'].mean())
-# print(hla_em_paired_scores['six_digit_score'].mean())
-# print(hla_em_paired_scores['eight_digit_score'].mean())
-#
-# print()
+print()
