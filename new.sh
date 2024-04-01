@@ -3,7 +3,7 @@ VOLUME_PATH="/data"
 
 # Install required Python packages
 #pip3 install matplotlib
-pip3 install whichcraft
+#pip3 install whichcraft
 #pip3 install matplotlib==3.4.3
 
 for trial in {0..47}; do
@@ -17,7 +17,7 @@ for trial in {0..47}; do
         -t 4 \
         --shortcut \
         --suppress_figs \
-        --training ${VOLUME_PATH}/output_training/training.csv \
+        --training ${VOLUME_PATH}/output_training/training.tsv \
         -o "${OUTPUT_DIR}" \
         -s "${VOLUME_PATH}/EnsembleGenome_STAR_without_scaffolds" \
         -r "${VOLUME_PATH}/hla_gen.fasta" \

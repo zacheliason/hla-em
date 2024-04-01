@@ -154,7 +154,7 @@ def main(args=None):
     outname = os.path.join(args.outname, base_outname)
 
     args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
-    if not args.shortcut and not os.path.isdir(args.starHLA):
+    if not os.path.exists(args.starHLA):
         indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
     if args.threads < 1:
@@ -266,9 +266,13 @@ def main(args=None):
 
     if not args.shortcut or not (os.path.exists('{}.mappedReads.tsv'.format(outname))):
         print("Creating read table", flush=True)
+        time_start = time.time()
         readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation, suppressOutputAndFigures=args.suppress_figs)
+        time_end = time.time()
 
-    if True:#not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
+        print(f"CreateMappedReads took {time_end - time_start} seconds")
+
+    if not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
         print("Running EM algorithm", flush=True)
         if args.shortcut:
             with open('{}.mappedReads.tsv'.format(outname)) as f:
@@ -279,7 +283,7 @@ def main(args=None):
         time_end = time.time()
         print(f"EM algorithm took {time_end - time_start} seconds")
 
-    predictions = predict_genotype_from_MLE(outname + ".results.tsv", outname, base_outname, training_csv=args.training)
+    predictions = predict_genotype_from_MLE(outname + ".results.tsv", outname, base_outname, training_spreadsheet=args.training)
     predicted_types = predictions.index.values.tolist()
 
     print("PREDICTED HLA TYPES:")

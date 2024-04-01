@@ -2,6 +2,7 @@ from matplotlib import pyplot as plt
 from matplotlib import font_manager
 import pandas as pd
 import numpy as np
+import traceback
 import json
 import re
 import os
@@ -237,16 +238,19 @@ def replace_smaller_allele(df, trial_name=None, training_path=""):
 	return df
 
 
-def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_csv, group_by_p=True):
-	if training_csv != "":
-		if not os.path.exists(training_csv):
-			with open(training_csv, 'w+') as f:
+def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_spreadsheet, group_by_p=True):
+	if training_spreadsheet != "":
+		if not os.path.exists(training_spreadsheet):
+			with open(training_spreadsheet, 'w+') as f:
 				f.write("trial_name\thla_letter\tmle1\tmle2\n")
 		else:
-			sep = "," if training_csv.endswith(".csv") else "\t"
-			training_df = pd.read_csv(training_csv, sep=sep).drop_duplicates()
-			training_df = training_df[training_df['trial_name'] != trial_name]
-			training_df.to_csv(training_csv, index=False, sep=sep)
+			sep = "," if training_spreadsheet.endswith(".csv") else "\t"
+			training_df = pd.read_csv(training_spreadsheet, sep=sep).drop_duplicates()
+			try:
+				training_df = training_df[training_df['trial_name'] != trial_name]
+				training_df.to_csv(training_spreadsheet, index=False, sep=sep)
+			except:
+				training_spreadsheet = ""
 
 	# Step 1: Read the TSV file into a DataFrame
 	df = pd.read_csv(em_results_path, sep='\t')
@@ -307,7 +311,7 @@ def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_csv
 	hla_prediction_df = pd.concat(hla_predictions)
 	hla_prediction_df.index = hla_prediction_df['HLAtype']
 
-	hla_prediction_df = replace_smaller_allele(hla_prediction_df, trial_name=trial_name, training_path=training_csv)
+	hla_prediction_df = replace_smaller_allele(hla_prediction_df, trial_name=trial_name, training_path=training_spreadsheet)
 
 	hla_prediction_df = hla_prediction_df.drop(columns=['hla_letter', "hla_code", "hla_type", "HLAtype"])
 
@@ -730,11 +734,11 @@ def score_output(output_dir, alleles_path):
 
 # optitype_paired_scores = score_optitype_output("/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/optitype_paired_output", "/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/reference/allele_record.csv")
 # hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
-hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em-sat/reference/allele_record.csv")
-
-print(hla_em_paired_scores['two_digit_score'].mean())
-print(hla_em_paired_scores['four_digit_score'].mean())
-print(hla_em_paired_scores['six_digit_score'].mean())
-print(hla_em_paired_scores['eight_digit_score'].mean())
-
-print()
+# hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em-sat/reference/allele_record.csv")
+#
+# print(hla_em_paired_scores['two_digit_score'].mean())
+# print(hla_em_paired_scores['four_digit_score'].mean())
+# print(hla_em_paired_scores['six_digit_score'].mean())
+# print(hla_em_paired_scores['eight_digit_score'].mean())
+#
+# print()

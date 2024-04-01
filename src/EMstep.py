@@ -118,7 +118,8 @@ def em_component(read_hits_matrix, lm_matrix, le_matrix, max_steps=500, conv_val
 
                 l_new += masked_log_values.sum()
 
-            print(f"\titeration: {iteration_number + 1}/{num_iter}, convergence value: {round(l_new - l, 6)}, solution found: {converged_once}", end='\r')
+            delta_likelihood = round(l_new - l, 6)
+            print(f"\tsolution found: {converged_once}, iteration: {iteration_number + 1}/{num_iter}, convergence value: {delta_likelihood: 7.6f}", end='\r')
 
             if l_new - l < conv_val:
                 converged = True
@@ -134,6 +135,8 @@ def em_component(read_hits_matrix, lm_matrix, le_matrix, max_steps=500, conv_val
 
     if not converged_once:
         raise RuntimeError(f'EM algorithm failed to converge after {max_steps} steps and {num_iter} iterations; aborting.')
+
+    print()
 
     return err_out, phi_out, steps_out
 
@@ -174,29 +177,6 @@ def EmAlgo(readsTable, outname, thresholdTpm=1.5):
         f.write(f"err\t{err_out:.5f}\n")
 
     return df
-
-
-class mappedRead:
-    def __init__(self, inputList):
-        self.hlaType = inputList[0]
-        self.readInfo = []
-        self.readNum = 0
-        self.genes = []
-        count = 0
-
-        for val in inputList[1:]:
-            if (count % 4) == 0:
-                val = int(val)
-                self.readInfo.append([val])
-                self.readNum += val
-            elif (count % 4) == 3:
-                if not val:
-                    self.genes.append([])
-                else:
-                    self.genes.append(val.split(','))
-            else:
-                self.readInfo[-1].append(float(val))
-            count += 1
 
 
 def main(argv):

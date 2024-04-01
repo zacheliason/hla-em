@@ -62,6 +62,6 @@ def train_tree_model(training_data_path):
     return python_tree_code
 
 
-python_code = train_tree_model('/Users/zacheliason/Downloads/hla-em/training.csv')
+python_code = train_tree_model('/Users/zacheliason/Downloads/hla-em/training.tsv')
 print(python_code)
 print()

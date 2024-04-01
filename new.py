@@ -5,7 +5,9 @@ import argparse
 import os
 
 # Define the volume path
-VOLUME_PATH = "/Users/zacheliason/Downloads/hla-em"  # Adjust this if needed
+VOLUME_PATH = ("/Users/zach"
+               "eliason/Downloads/hla-em")  # Adjust this if needed
+VOLUME_PATH = "/Users/zeliason/Downloads/hla-em"  # Adjust this if needed
 
 # Define the range of trials (0 to 31)
 trials = range(9, 10)
