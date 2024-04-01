@@ -119,7 +119,10 @@ def plot_pie_charts(predicted_hla_path, em_results_path, outname):
 
 	# Assign a color to each Other Allele
 	for i, r in greys.iterrows():
-		color_dict[r['HLAtype']] = plt.cm.Greys(grey_linspace[i])
+		if i % 2 == 0:
+			color_dict[r['HLAtype']] = plt.cm.Greys(.4)
+		else:
+			color_dict[r['HLAtype']] = plt.cm.Greys(.475)
 
 	for ax in axes:
 		ax.set_prop_cycle('color', [color_dict[x] for x in em_results_df['HLAtype']])
@@ -242,6 +245,7 @@ def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_csv
 		else:
 			sep = "," if training_csv.endswith(".csv") else "\t"
 			training_df = pd.read_csv(training_csv, sep=sep).drop_duplicates()
+			training_df = training_df[training_df['trial_name'] != trial_name]
 			training_df.to_csv(training_csv, index=False, sep=sep)
 
 	# Step 1: Read the TSV file into a DataFrame
@@ -268,12 +272,12 @@ def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_csv
 	hla_predictions = []
 	for group in sorted_groups.values():
 		# Select top 2 MLE_Probability values
-		top_values = group['MLE_Probability'].nlargest(2).values.tolist()
+		top_values = group['MLE_Probability'].drop_duplicates().nlargest(2).values.tolist()
 
 		# Filter the group to only include rows equal to either of the top 2 MLE_Probability values
 		filtered_group = group[group['MLE_Probability'].isin(top_values)]
 
-		for mle_prob in filtered_group['MLE_Probability'].unique():
+		for i, mle_prob in enumerate(filtered_group['MLE_Probability'].unique()):
 			mle_prob_group = filtered_group[filtered_group['MLE_Probability'] == mle_prob]
 			# If only one allele is present in the group, add it to the final predictions
 			if len(mle_prob_group) < 2:
@@ -292,7 +296,13 @@ def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_csv
 				df_sorted = mle_prob_group.iloc[mle_prob_group['hla_code'].map(custom_sort_key).argsort()]
 
 				# Select the top allele
-				hla_predictions.append(df_sorted.head(1))
+				# If i == 0, there are multiple alleles with the highest MLE_Probability value so grab the top 2 and break
+				if i == 0:
+					hla_predictions.append(df_sorted.head(2))
+					break
+				# If i == 1, there is only one allele left to add
+				else:
+					hla_predictions.append(df_sorted.head(1))
 
 	hla_prediction_df = pd.concat(hla_predictions)
 	hla_prediction_df.index = hla_prediction_df['HLAtype']
@@ -628,6 +638,23 @@ def score_optitype_output(output_dir, alleles_path):
 	results = results[front_cols + [col for col in results.columns if col not in front_cols]]
 
 	return results
+
+
+#
+# def predict_allele_action(mle1, mle2, ratio):
+# 	if mle2 <= 0.0345:
+# 		if mle1 <= 0.188:
+# 			return "DROP"
+# 		else:  # if mle1 > 0.188
+# 			return "COPY"
+# 	else:  # if mle2 > 0.0345
+# 		if mle2 <= 0.0519:
+# 			if ratio <= 3:
+# 				return "KEEP"
+# 			else:  # if mle2 > 0.0492
+# 				return "COPY"
+# 		else:  # if mle2 > 0.0519
+# 			return "KEEP"
 
 
 def predict_allele_action(mle1, mle2, ratio):

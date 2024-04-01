@@ -1,22 +1,179 @@
 #!rusr/bin/env python
 
-from src.ManipulateFiles import plot_pie_charts
 import pandas as pd
 import numpy as np
 import matplotlib
 import math
 import sys
 import os
-import re
-
 
 matplotlib.use('Agg')
 
 # Difference value between successive loglikelihoods below which algorithm is deemed to have converged
 conVal = 1e-4
-
 numIter = 5
-maxSteps = 500
+
+
+def parse_read_info(line_data):
+    line_data = line_data
+    read_info = line_data.reshape(-1, 4)
+    read_nums = read_info[:, 0].astype(np.int32)
+    lm = read_info[:, 1].astype(np.float32)
+    le = read_info[:, 2].astype(np.float32)
+    # genes = read_info[:, 3] #line_data[1:][::4][read_nums == 0]
+    return read_nums, lm, le # genes
+
+def read_table(readsTable):
+    arrays_list = [np.array(line.split('\t')) for line in readsTable[2:]]
+    list_len = arrays_list[0].shape[0]
+    arrays_list = [np.array(arr) for arr in arrays_list if arr.shape[0] == list_len]
+    lines = np.vstack(arrays_list)
+    hla_types = lines[:, 0]
+    lines = lines[:, 1:]
+    parsed_lines = [parse_read_info(line) for line in lines]
+
+    parsed_data = np.array(parsed_lines)
+
+    read_hits_matrix = parsed_data[:, 0]
+    lm_matrix = parsed_data[:, 1]
+    le_matrix = parsed_data[:, 2]
+
+    uniq_reads, *is_read_ambig = readsTable[1].split('\t')
+
+    return hla_types, read_hits_matrix, lm_matrix, le_matrix, is_read_ambig, int(uniq_reads)
+
+
+def em_component(read_hits_matrix, lm_matrix, le_matrix, max_steps=500, conv_val=1e-4, num_iter=5):
+    k = read_hits_matrix.shape[0]  # number of HLA types
+    m = read_hits_matrix.shape[1]  # number of reads
+    iter_out = None
+    converged_once = False
+    l_out = -np.inf
+    err_out = 0.0
+    phi_out = np.zeros(k)
+    steps_out = 0
+
+    for iteration_number in range(num_iter):
+        converged = False
+
+        if iteration_number == 0:
+            err = 0.005
+            phi = np.full(k, 1.0 / k)
+        else:
+            err = 0.05 * np.random.random()
+            phi = np.random.random(k)
+            phi /= phi.sum()
+
+        l = -np.inf
+        w = np.zeros((m, k))
+        steps = 0
+
+        while not converged:
+            steps += 1
+            if steps > max_steps:
+                if not converged_once:
+                    max_steps += 100
+                break
+
+            # E step
+            for j in range(k):
+                lm = lm_matrix[j]
+                le = le_matrix[j]
+                read_hits = read_hits_matrix[j]
+                column_values = ((1.0 - err) ** lm * err ** le) * phi[j]
+                masked_column_values = read_hits * column_values
+                w[:, j] = masked_column_values
+
+            w /= w.sum(axis=1, keepdims=True)
+
+            # M step
+            ## err
+            b_num = np.sum(w[:, :] * le_matrix.T)
+            b_den = np.sum(w[:, :] * lm_matrix.T)
+            b = b_num / b_den
+            err = b / (1.0 + b)
+
+            ## phi
+            phi[:] = w.sum(axis=0) / m
+
+            # Calculate log-likelihood
+            l_new = 0.0
+            for j in range(k):
+                lm = lm_matrix[j]
+                le = le_matrix[j]
+                read_hits = read_hits_matrix[j]
+
+                numerator = (1.0 - err) ** lm * err ** le * phi[j]
+                numerator[numerator == 0] = sys.float_info.min
+
+                denominator = w[:, j]
+                denominator[denominator == 0] = sys.float_info.min
+
+                log_numerator = np.log(numerator)
+                log_denominator = np.log(denominator)
+
+                log_likelihood_values = w[:, j] * (log_numerator - log_denominator)
+
+                masked_log_values = np.where(read_hits > 0, log_likelihood_values, 0)
+
+                l_new += masked_log_values.sum()
+
+            print(f"\titeration: {iteration_number + 1}/{num_iter}, convergence value: {l_new - l}, solution found: {converged_once}", end='\r')
+
+            if l_new - l < conv_val:
+                converged = True
+                if iteration_number == 0 or l_new > l_out or iter_out is None:
+                    converged_once = True
+                    l_out = l_new
+                    err_out = err
+                    phi_out = phi
+                    steps_out = steps
+                    iter_out = iteration_number
+
+            l = l_new
+
+    if not converged_once:
+        raise RuntimeError(f'EM algorithm failed to converge after {max_steps} steps and {num_iter} iterations; aborting.')
+
+    return err_out, phi_out, steps_out
+
+
+def EmAlgo(readsTable, outname, thresholdTpm=1.5):
+    hla_types, read_hits_matrix, lm_matrix, le_matrix, is_read_ambig, uniq_reads = read_table(readsTable)
+    num_total_reads = read_hits_matrix.sum()
+    err_out, phi_out, steps_out = em_component(read_hits_matrix, lm_matrix, le_matrix)
+
+    mle_reads = uniq_reads * phi_out
+    tpm_values = mle_reads * 1e6 / num_total_reads
+
+    mle_reads = np.round(mle_reads).astype(int)
+
+    # Get number of reads that pass TPM threshold:
+    passes_threshold = tpm_values > thresholdTpm
+    totalOutReads = np.sum(mle_reads[passes_threshold])
+    output_lines = []
+    for j, hla in enumerate(hla_types):
+        if tpm_values[j] > thresholdTpm:
+            mapped_reads = read_hits_matrix[j].sum()
+
+            HLA_reference = {
+                'HLAtype': str(hla),
+                'MappedReads': mapped_reads,
+                'MappedProportion': mapped_reads / num_total_reads,
+                'MLE_Reads': mle_reads[j],
+                'MLE_Probability': mle_reads[j] / totalOutReads
+            }
+            output_lines.append(HLA_reference)
+
+    df = pd.DataFrame(output_lines)
+    df = df.sort_values('MLE_Probability', ascending=False)
+    df.to_csv(outname + ".results.tsv", sep='\t', index=False)
+
+    with open(f"{outname}.em_algorithm.Log", "w") as f:
+        f.write(f"Converged to < {conVal:.1e} in {steps_out} iterations\n")
+        f.write(f"err\t{err_out:.5f}\n")
+
+    return df
 
 
 class mappedRead:
@@ -25,212 +182,21 @@ class mappedRead:
         self.readInfo = []
         self.readNum = 0
         self.genes = []
-        count=0
+        count = 0
+
         for val in inputList[1:]:
-            if (count%4)==0:
+            if (count % 4) == 0:
                 val = int(val)
                 self.readInfo.append([val])
-                self.readNum+=val
-            elif (count%4)==3:
+                self.readNum += val
+            elif (count % 4) == 3:
                 if not val:
                     self.genes.append([])
                 else:
                     self.genes.append(val.split(','))
             else:
                 self.readInfo[-1].append(float(val))
-            count+=1
-
-            
-
-def EmAlgo(readsTable, allReadsNum, thresholdTpm=1.5, outputName='hlaType', printResult=True, suppressOutputAndFigures=False):
-    iterOut = None
-    mappedReads = []
-    totalReads = 0
-    uniqReads = int(readsTable[1].split('\t')[0])
-    isReadAmbig = [x for x in readsTable[1].split('\t')[1:] if x != ""]
-    for line in readsTable[2:]:
-        line = line.split('\t')
-        mappedReads.append(mappedRead(line))
-        totalReads += mappedReads[-1].readNum
-
-    if mappedReads:
-        # Initialize EM algorithm
-        m = len(mappedReads[0].readInfo) #number of reads
-        k = len(mappedReads) #number of HLA types
-
-        #Parameters
-        for ni in range(numIter):
-            if ni==0:
-                lOut = -float('inf')
-                err = 0.005
-                phi = [1./k]*k
-            else:
-                err = 0.05*np.random.random(1)[0]
-                phi = np.random.random(k)
-                phi /= phi.sum()
-
-            w=np.zeros([m,k])
-            steps=0
-
-            # Calculate initial l
-            l = -float('inf')
-
-            converged=False
-            while not converged:
-                steps+=1
-                if(steps>maxSteps):
-                    print(f'Iter: {ni}, EM algorithm failed to converge after {maxSteps} steps.')
-                    break
-                    raise RuntimeError('EM algorithm failed to converge after {} steps; aborting.'.format(maxSteps))
-                    
-                # E step
-                for j,hla in enumerate(mappedReads):
-                    for i,readInfo in enumerate(hla.readInfo):
-                        if readInfo[0]:
-                            Lm = readInfo[1]
-                            Le = readInfo[2]
-                            w[i,j] = ((1.-err)**Lm * err**Le) * phi[j]
-                for i in range(m):
-                    w[i,:] = w[i,:]/sum(w[i,:])
-
-                # M step
-                ## err
-                Bnum = 0
-                Bden = 0
-                for j,hla in enumerate(mappedReads):
-                    for i,readInfo in enumerate(hla.readInfo):
-                        if readInfo[0]:
-                            Lm = readInfo[1]
-                            Le = readInfo[2]
-                            Bnum += w[i,j]*Le
-                            Bden += w[i,j]*Lm
-                B = Bnum/Bden
-                err = B/(1.+B)
-
-                ## phi
-                for j in range(k):
-                    phi[j] = sum(w[:,j])/m
-
-                # Calculate loglikelihood, check change
-                l0 = l
-                l = 0
-                for j,hla in enumerate(mappedReads):
-                    for i,readInfo in enumerate(hla.readInfo):
-                        if readInfo[0]:
-                            Lm = readInfo[1]
-                            Le = readInfo[2]
-                            try:
-                                l +=  w[i,j] * math.log(((1.-err)**Lm * err**Le * phi[j])/w[i,j])
-                            except:
-                                l +=  w[i,j] * math.log(sys.float_info.min)
-                if (l-l0) < conVal:
-                    converged=True
-                    if ni==0 or l>lOut or iterOut is None:
-                        if iterOut is None and ni!=0:
-                            print(f'  found {ni} was better')
-                        lOut = l
-                        errOut = err
-                        phiOut = phi
-                        stepsOut = steps
-                        iterOut = ni
-
-        # Print out results:
-        types = []
-        typesAll = []
-        readProps = []
-        emProps = []
-        output=[]
-        hlaGeneReadCountsDict = {}
-        geneNamesSet = set()
-
-        output_lines = []
-
-        # Get number of reads that pass TPM threshold:
-        totalOutReads = 0
-        for j,hla in enumerate(mappedReads):
-            if uniqReads*phiOut[j]*1e6/allReadsNum > thresholdTpm:
-                totalOutReads += int(round(uniqReads*phiOut[j]))
-            
-        for j,hla in enumerate(mappedReads):
-            hlaName = hla.hlaType
-            if uniqReads*phiOut[j]*1e6/allReadsNum > thresholdTpm:
-                types.append(hlaName)
-                typesAll.append(hlaName)
-
-                HLA_reference = {
-                    'HLAtype': hlaName,
-                    'MappedReads': hla.readNum,
-                    'MappedProportion': float(hla.readNum) / totalReads,
-                    'MLE_Reads': int(round(uniqReads * phiOut[j])),
-                    'MLE_Probability': round(uniqReads * phiOut[j])/totalOutReads
-                }
-                output_lines.append(HLA_reference)
-
-                output.append('{!s}\t{:d}\t{:.5f}\t{:d}\t{:.5f}'.format(hlaName,
-                                    hla.readNum, float(hla.readNum)/totalReads,
-                                    int(round(uniqReads*phiOut[j])), round(uniqReads*phiOut[j])/totalOutReads))
-                readProps.append(float(hla.readNum)/totalReads)
-
-                emProps.append(round(uniqReads*phiOut[j])/totalOutReads)
-
-                # Get per-gene read counts
-                if hlaName not in hlaGeneReadCountsDict:
-                    hlaGeneReadCountsDict[hlaName] = {}
-
-                for ii in range(len(hla.readInfo)):
-                    try:
-                        geneList = hla.genes[ii]
-                    except:
-                        print("Len hla.readInfo: " + str(len(hla.readInfo)))
-                        print("current index: " + str(ii))
-                        print("error from " + str(hla.genes))
-                        sys.exit(1)
-                    if isReadAmbig[ii] == 'U':
-                        val = 1
-                    else:
-                        val = phiOut[j]
-                    if geneList:
-                        for gene in geneList:
-                            geneNamesSet.add(gene)
-                            if gene not in hlaGeneReadCountsDict[hlaName]:
-                                hlaGeneReadCountsDict[hlaName][gene] = val
-                            else:
-                                hlaGeneReadCountsDict[hlaName][gene] += val
-            else:
-                if os.path.exists(outputName+'.'+hlaName+'.cov.pdf'):
-                    os.remove(outputName+'.'+hlaName+'.cov.pdf')
-                if float(hla.readNum)/totalReads > 1e-4:
-                    typesAll.append(hlaName)
-                    readProps.append(float(hla.readNum)/totalReads)
-                    emProps.append(0.0)
-
-        print('Converged to < {:.1e} in {:d} iterations'.format(conVal, stepsOut))
-
-        if output:
-            df = pd.DataFrame(output_lines)
-            df = df.sort_values('MLE_Probability', ascending=False)
-            df.to_csv(outputName + ".results.tsv", sep='\t', index=False)
-
-            # # Only print and write results to output file if specified
-            # if not suppressOutputAndFigures:
-            #     # Write out read counts table
-            #     gene_read_counts_df = pd.DataFrame.from_dict(hlaGeneReadCountsDict, orient='index')
-            #     gene_read_counts_df = gene_read_counts_df.reindex(sorted(gene_read_counts_df.columns), axis=1)
-            #     gene_read_counts_df.fillna(0, inplace=True)
-            #     gene_read_counts_df.to_csv(outputName + '.readCounts.tsv', sep='\t', float_format='%.3f')
-
-            print(f"{steps} steps to converge.")
-
-        else:
-            with open(outputName+'.results.tsv','w') as fOut:
-                fOut.write('No HLA types detected\n')
-            if printResult:
-                print('No HLA types detected')
-    else:
-        with open(outputName+'.results.tsv','w') as fOut:
-            fOut.write('No HLA types detected\n')
-        if printResult:
-            print('No HLA types detected')
+            count += 1
 
 
 def main(argv):
@@ -240,11 +206,12 @@ def main(argv):
         outputName = sys.argv[3]
     else:
         outputName = 'hlaType'
-    with open(readTableFile,'r') as inFile:
+    with open(readTableFile, 'r') as inFile:
         for line in inFile:
             readTable.append(line.strip('\n'))
-    EmAlgo(readTable, allReadsNum=int(sys.argv[2]), thresholdTpm=1.48, outputName=outputName, printResult=True)
+    # EmAlgo(readTable, allReadsNum=int(sys.argv[2]), thresholdTpm=1.48, outputName=outputName, printResult=True)
+    EmAlgo(readTable, outname=outputName, thresholdTpm=1.48)
 
-        
+
 if __name__=="__main__":
     main(sys.argv)

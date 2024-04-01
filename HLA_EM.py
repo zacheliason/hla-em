@@ -6,6 +6,7 @@ import subprocess as subp
 import argparse as argp
 import traceback
 import shutil
+import time
 import sys
 import os
 import re
@@ -153,7 +154,7 @@ def main(args=None):
     outname = os.path.join(args.outname, base_outname)
 
     args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
-    if not os.path.isdir(args.starHLA):
+    if not args.shortcut and not os.path.isdir(args.starHLA):
         indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
     if args.threads < 1:
@@ -267,9 +268,16 @@ def main(args=None):
         print("Creating read table", flush=True)
         readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation, suppressOutputAndFigures=args.suppress_figs)
 
-    if not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
+    if True:#not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
         print("Running EM algorithm", flush=True)
-        EmAlgo(readsTable, allReadsNum, thresholdTpm=args.tpm, outputName=outname, printResult=args.printem)
+        if args.shortcut:
+            with open('{}.mappedReads.tsv'.format(outname)) as f:
+                readsTable = f.read().split('\n')
+
+        time_start = time.time()
+        EmAlgo(readsTable, outname=outname, thresholdTpm=args.tpm)
+        time_end = time.time()
+        print(f"EM algorithm took {time_end - time_start} seconds")
 
     predictions = predict_genotype_from_MLE(outname + ".results.tsv", outname, base_outname, training_csv=args.training)
     predicted_types = predictions.index.values.tolist()
@@ -283,7 +291,7 @@ def main(args=None):
         # TODO remove try/except
         try:
             plot_pie_charts(outname + ".final_predictions.csv", outname + ".results.tsv", outname)
-            plot_coverage_maps(outname + ".cov_plot_args.json", predicted_types)
+            # plot_coverage_maps(outname + ".cov_plot_args.json", predicted_types)
         except:
             print(traceback.format_exc())
             pass

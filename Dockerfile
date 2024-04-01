@@ -21,7 +21,7 @@ WORKDIR $WD
 # ADD . $WD
 
 RUN apt-get update --yes \
-&& apt-get install wget build-essential gdb python-dev python3-pip python3-dev libncurses5-dev zlib1g-dev libbz2-dev liblzma-dev libkrb5-dev libnss3-dev ssh sudo less zip unzip git-all cmake libxml2-dev bedtools libcurl4-openssl-dev libssl-dev --yes \
+&& apt-get install wget build-essential gdb python-dev python3-pip python3-dev libncurses5-dev zlib1g-dev libbz2-dev liblzma-dev libkrb5-dev libnss3-dev ssh sudo less zip unzip git-all cmake libxml2-dev bedtools libcurl4-openssl-dev libssl-dev liblapack-dev libblas-dev --yes \
 && apt-get clean all
 
 # Install OpenSSL
@@ -75,6 +75,10 @@ RUN /usr/local/bin/uv venv /home/packages/.venv
 
 # Copy the requirements.txt file
 COPY ./requirements.txt .
+
+
+RUN apt-get update && apt-get install -y gfortran
+
 
 # Install Python dependencies using uv
 RUN /usr/local/bin/uv pip install --no-cache -r requirements.txt

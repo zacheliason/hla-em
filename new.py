@@ -1,3 +1,5 @@
+import traceback
+
 import HLA_EM
 import argparse
 import os
@@ -6,6 +8,8 @@ import os
 VOLUME_PATH = "/Users/zacheliason/Downloads/hla-em"  # Adjust this if needed
 
 # Define the range of trials (0 to 31)
+trials = range(9, 10)
+trials = range(0, 2)
 trials = range(32)
 
 # Function to simulate argparse and create namespace
@@ -41,8 +45,9 @@ def create_namespace():
 
     return parser.parse_args([
         "-t", "4",
-        "--training", f"{OUT_DIR}/training.tsv",
         "--shortcut",
+        "--suppress_figs",
+        "--training", f"{OUT_DIR}/training.tsv",
         "-o", OUTPUT_DIR,
         "-s", os.path.join(VOLUME_PATH, "EnsembleGenome_STAR_without_scaffolds"),
         "-r", os.path.join(VOLUME_PATH, "hla_gen.fasta"),
@@ -52,12 +57,15 @@ def create_namespace():
 
 # Iterate over each trial
 for trial in trials:
+    print(f"now working on {trial}")
     TRIAL_DIR = os.path.join(VOLUME_PATH, f"reference/samples/trial_{trial}")
-    OUT_DIR = os.path.join(VOLUME_PATH, f"output_paired")
+    OUT_DIR = os.path.join(VOLUME_PATH, f"output_training")
     OUTPUT_DIR = os.path.join(OUT_DIR, f"trial_{trial}")
 
-    # Create namespace with arguments
-    args = create_namespace()
-
-    # Call HLA_EM.main with arguments
-    HLA_EM.main(args)
+    try:
+        # Create namespace with arguments
+        args = create_namespace()
+        HLA_EM.main(args)
+    except:
+        print(traceback.format_exc())
+        print()
