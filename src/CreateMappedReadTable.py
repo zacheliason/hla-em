@@ -475,7 +475,7 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
     alignments_dataframe = df.loc[(df.sum(axis=1) != 0), (df.sum(axis=0) != 0)]
 
     print()
-    print(f"Saving alignment matrix of dimensions {len(alignments_dataframe.index)} x {len(alignments_dataframe.columns)}")
+    print(f"Saving alignment matrix of dimensions {len(alignments_dataframe.index)} references x {len(alignments_dataframe.columns)} reads")
     print()
 
     mappedCount = 0

@@ -16,6 +16,9 @@ __version__ = "1.0.2"
 
 # TODO remove
 os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
+print(os.getcwd())
+print(os.listdir(os.getcwd())
+
 
 def prereqs():
     programs = ["python3", "samtools"]#, "STAR"]
@@ -26,7 +29,6 @@ def prereqs():
             print(programs[i] + " not installed. Please install " + programs[i])
             ready = False
     return ready
-
 
 
 def cmd(args, write=False, filepath=None, verbose=True):
@@ -126,7 +128,6 @@ def main(args=None):
         myparse.add_argument('-v', '--version', action='version', version='%(prog)s {}'.format(__version__))
         myparse.add_argument('--training', type=str, default="")
 
-
         # TODO remove shortcut
         myparse.add_argument('--shortcut', action='store_true', default=False)
 
@@ -145,7 +146,6 @@ def main(args=None):
     # TODO remove shortcut
     if args.shortcut and os.path.exists(os.path.join(args.outname, 'final_predictions.csv')):
         pass
-        # print(f"final predictions already exists! Taking shortcut :)")
         # exit(0)
 
     if not os.path.isdir(args.outname):
@@ -223,7 +223,7 @@ def main(args=None):
             os.rename(reads_dir + '.Log.final.out', outname + ".Log.final.out")
 
         allReadsNum, unmappedReadsNum = get_read_counts_from_log(outname + ".Log.final.out")
-        # print(f"{unmappedReadsNum} reads unmapped out of {allReadsNum} reads total")
+        print(f"{unmappedReadsNum} reads unmapped to human genome out of {allReadsNum} reads total")
 
         # TODO remove shortcut
         if not args.shortcut or not (os.path.exists('{}.1.Aligned.out.bam'.format(outname))):
@@ -274,9 +274,6 @@ def main(args=None):
 
     if not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
         print("Running EM algorithm", flush=True)
-        if args.shortcut:
-            with open('{}.mappedReads.tsv'.format(outname)) as f:
-                readsTable = f.read().split('\n')
 
         time_start = time.time()
         EmAlgo(readsTable, outname=outname, thresholdTpm=args.tpm)
@@ -295,7 +292,7 @@ def main(args=None):
         # TODO remove try/except
         try:
             plot_pie_charts(outname + ".final_predictions.csv", outname + ".results.tsv", outname)
-            # plot_coverage_maps(outname + ".cov_plot_args.json", predicted_types)
+            plot_coverage_maps(outname + ".cov_plot_args.json", predicted_types)
         except:
             print(traceback.format_exc())
             pass

@@ -5,6 +5,44 @@ import pandas as pd
 import numpy as np
 
 
+def add_labels(filepath, training_path):
+    df = pd.read_csv(filepath)
+    # extract trial num from reference fasta column
+    df['trial'] = df['reference_fasta'].str.extract(r'(trial_\d+)')
+
+    labels_dict = []
+    for i, r in df.iterrows():
+        trial_name = r['trial']
+        for letter in ['A', 'B', 'C']:
+            # extract allele from reference fasta column
+            if r[f'{letter}{1}_allele'] == r[f'{letter}{2}_allele']:
+                label = "COPY"
+            elif pd.isna(r[f'{letter}{1}_allele']) or pd.isna(r[f'{letter}{2}_allele']):
+                label = "DROP"
+            else:
+                label = "KEEP"
+
+            labels_dict.append({
+                'trial_name': trial_name,
+                'hla_letter': letter,
+                'label': label
+            })
+
+
+    labels_df = pd.DataFrame(labels_dict)
+
+    sep = "," if training_path.endswith('.csv') else "\t"
+    training_df = pd.read_csv(training_path, sep=sep)
+
+    # merge on trial_name and letter
+    training_df = training_df.merge(labels_df, on=['trial_name', 'hla_letter'])
+    training_df = training_df.sort_values(['trial_name', 'hla_letter'])
+    training_df.to_csv(training_path, sep=sep, index=False)
+
+    print()
+
+
+
 def tree_to_code(tree, feature_names):
     index_to_class = {i: class_name for i, class_name in enumerate(tree.classes_)}
     tree_ = tree.tree_
@@ -40,7 +78,8 @@ def tree_to_code(tree, feature_names):
 
 def train_tree_model(training_data_path):
     # Load and preprocess data
-    data = pd.read_csv(training_data_path)
+    sep = "," if training_data_path.endswith('.csv') else "\t"
+    data = pd.read_csv(training_data_path, sep=sep)
     data['ratio'] = data['mle1'] / data['mle2']
     feature_names = ['mle1', 'mle2', 'ratio']
 
@@ -51,8 +90,8 @@ def train_tree_model(training_data_path):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
     clf = DecisionTreeClassifier(max_depth=3)
-    clf.fit(X_train, y_train)
-    # clf.fit(X, y)
+    # clf.fit(X_train, y_train)
+    clf.fit(X, y)
 
     y_pred = clf.predict(X_test)
     accuracy = accuracy_score(y_test, y_pred)
@@ -61,7 +100,9 @@ def train_tree_model(training_data_path):
     python_tree_code = tree_to_code(clf, feature_names=feature_names)
     return python_tree_code
 
+training_path = '/Users/zacheliason/Downloads/hla-em/output_training/training.tsv'
 
-python_code = train_tree_model('/Users/zacheliason/Downloads/hla-em/training.tsv')
+# add_labels('/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv', training_path)
+python_code = train_tree_model(training_path)
 print(python_code)
 print()
