@@ -17,7 +17,7 @@ __version__ = "1.0.2"
 # TODO remove
 os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
 print(os.getcwd())
-print(os.listdir(os.getcwd())
+print(os.listdir(os.getcwd()))
 
 
 def prereqs():
