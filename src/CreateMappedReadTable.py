@@ -2,6 +2,7 @@
 
 from subprocess import Popen, PIPE
 from collections import Counter
+import scipy.sparse as sp
 import argparse as argp
 import pandas as pd
 import numpy as np
@@ -58,7 +59,7 @@ def fast_load_alignments_from_bam(hlaBams, filterLowComplexity):
             # num_alignments = samfile.count()
             # for read in samfile.fetch():
             ctr += 1
-            if ctr % 1000 == 0:
+            if ctr % 10000 == 0:
                 print(f"  processing alignment {ctr}/{num_alignments}", end='\r')
 
             readName = line[0]
@@ -231,51 +232,131 @@ def fast_create_hla_read_matrix(readNames_to_aligns):
     ambig_matrix = np.where(match_length_matrix > 0, 1, 0)
     ambig_array = np.sum(ambig_matrix, axis=0) > 1
 
-    return match_length_matrix, error_length_matrix, ambig_array, pass_dust_array, ref_ids, read_names, ref_id_to_index, read_name_to_index
+    match_length_matrix_sparse = sp.csr_matrix(match_length_matrix)
+    error_length_matrix_sparse = sp.csr_matrix(error_length_matrix)
+    # ambig_array_sparse = sp.csr_matrix(ambig_array.reshape(1, -1))
+    # pass_dust_array_sparse = sp.csr_matrix(pass_dust_array.reshape(1, -1))
+
+    # Remove references to dense matrices
+    del match_length_matrix
+    del error_length_matrix
+    # del ambig_array
+    # del pass_dust_array
+
+    return match_length_matrix_sparse, error_length_matrix_sparse, ambig_array, pass_dust_array, ref_ids, read_names, ref_id_to_index, read_name_to_index
 
 
 # Only keep alignments with the maximum match length for each reference
-def mask_non_max_values(lm_matrix, ambig_array):
-    match_length_matrix = lm_matrix.copy()
 
-    # max_values = np.max(match_length_matrix, axis=1, keepdims=True)
-    max_values = np.max(match_length_matrix.astype(float), axis=1, keepdims=True)
+def mask_non_max_values(lm_matrix_sparse, ambig_array):
+    # Convert ambig_array_sparse to a column vector
 
-    mask = match_length_matrix == max_values
+    # Convert lm_matrix_sparse to a dense matrix for max operation
+    lm_matrix_dense = lm_matrix_sparse.toarray().astype(float)
 
-    # Also keep all unambiguous alignments
+    # Find the maximum values along the rows
+    max_values = lm_matrix_dense.max(axis=1, keepdims=True)
+
+    # Create a sparse mask for maximum values
+    mask = lm_matrix_dense == max_values
     unambig_array = ~ambig_array.astype(bool)
     mask = np.logical_or(mask, unambig_array)
 
-    return np.where(mask, match_length_matrix, 0)
+    mask_sparse = sp.csr_matrix(mask)
+
+    del mask
+    del lm_matrix_dense
+    del max_values
+
+    # Apply the mask to the original sparse matrix
+    masked_matrix = sp.csr_matrix(lm_matrix_sparse.multiply(mask_sparse))
+
+    return masked_matrix
+# def mask_non_max_values(lm_matrix, ambig_array):
+#     match_length_matrix = lm_matrix.copy()
+#
+#     # max_values = np.max(match_length_matrix, axis=1, keepdims=True)
+#     max_values = np.max(match_length_matrix.astype(float), axis=1, keepdims=True)
+#
+#     mask = match_length_matrix == max_values
+#
+#     # Also keep all unambiguous alignments
+#     unambig_array = ~ambig_array.astype(bool)
+#     mask = np.logical_or(mask, unambig_array)
+#
+#     return np.where(mask, match_length_matrix, 0)
 
 
 # Replace all non-zero values with the total number of reads mapped to the reference
-def createTotalMappedReadsMat(masked_matrix, ref_ids, hlaRefID_to_totalMappedReads):
-    matrix = masked_matrix.copy()
+def createTotalMappedReadsMat(masked_matrix_sparse, ref_ids, hlaRefID_to_totalMappedReads):
+    matrix_sparse = masked_matrix_sparse.copy()
+    num_rows, num_cols = matrix_sparse.shape
+
     for i, ref_id in enumerate(ref_ids):
         total_mapped_reads = hlaRefID_to_totalMappedReads[ref_id]
-        matrix[i, :] = np.where(matrix[i, :] > 0, total_mapped_reads, 0)
 
-    return matrix
+        # Create a dense row vector with the total_mapped_reads value
+        row_vector = sp.csr_matrix((np.full(num_cols, total_mapped_reads), (np.zeros(num_cols, dtype=int), np.arange(num_cols))), shape=(1, num_cols))
+
+        # Create a mask for the current row
+        row_mask = matrix_sparse[i, :].astype(bool).reshape(1, -1)
+
+        # Apply the total_mapped_reads value where the mask is True
+        matrix_sparse[i, :] = row_vector.multiply(row_mask)
+
+    return matrix_sparse
+# def createTotalMappedReadsMat(masked_matrix, ref_ids, hlaRefID_to_totalMappedReads):
+#     matrix = masked_matrix.copy()
+#     for i, ref_id in enumerate(ref_ids):
+#         total_mapped_reads = hlaRefID_to_totalMappedReads[ref_id]
+#         matrix[i, :] = np.where(matrix[i, :] > 0, total_mapped_reads, 0)
+#
+#     return matrix
 
 
 # Keep only alignments with the top n highest number of mapped reads for each reference
-def filter_highest_mapped_reads(matrix, ambig_array, n=1):
-    mat = matrix.copy()
-    mask = np.zeros_like(mat, dtype=bool)
+def filter_highest_mapped_reads(matrix_sparse, ambig_array, n=1):
+    # Convert sparse matrix to a dense matrix
+    matrix_dense = matrix_sparse.toarray()
 
-    for col_index in range(mat.shape[1]):
-        col = mat[:, col_index]
+    # Create a boolean mask
+    mask = np.zeros_like(matrix_dense, dtype=bool)
+
+    for col_index in range(matrix_dense.shape[1]):
+        col = matrix_dense[:, col_index]
         top_n_values = np.unique(np.sort(col)[-n:])
         for value in top_n_values:
-            mask[:, col_index] |= (mat[:, col_index] == value)
+            mask[:, col_index] |= (matrix_dense[:, col_index] == value)
 
     # Also keep all unambiguous alignments
     unambig_array = ~ambig_array.astype(bool)
     mask = np.logical_or(mask, unambig_array)
 
-    return mat * mask
+    # Convert the mask to a sparse matrix
+    mask_sparse = sp.csr_matrix(mask)
+
+    del mask
+    del matrix_dense
+
+    # Apply the mask to the original sparse matrix
+    filtered_matrix_sparse = matrix_sparse.multiply(mask_sparse)
+
+    return filtered_matrix_sparse
+# def filter_highest_mapped_reads(matrix, ambig_array, n=1):
+#     mat = matrix.copy()
+#     mask = np.zeros_like(mat, dtype=bool)
+#
+#     for col_index in range(mat.shape[1]):
+#         col = mat[:, col_index]
+#         top_n_values = np.unique(np.sort(col)[-n:])
+#         for value in top_n_values:
+#             mask[:, col_index] |= (mat[:, col_index] == value)
+#
+#     # Also keep all unambiguous alignments
+#     unambig_array = ~ambig_array.astype(bool)
+#     mask = np.logical_or(mask, unambig_array)
+#
+#     return mat * mask
 
 
 def load_hla_ref(hlaRefPath):
@@ -452,6 +533,11 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
             }
             json.dump(json_obj, outFile)
 
+    # save lm_matrix and em_matrix as dfs
+    # pd.DataFrame(lm_matrix, index=ref_ids, columns=read_names).to_csv(f'{outputName}.lm_matrix.tsv', sep='\t')
+    # np.savetxt(f'{outputName}.ambig_array.tsv', ambig_array, fmt='%d')
+    # np.savetxt(f'{outputName}.pass_dust_array.tsv', pass_dust_array, fmt='%d')
+    # pd.DataFrame(hlaRefID_to_totalMappedReads.items(), columns=['ref_id', 'total_mapped_reads']).to_csv(f"{outputName}.hlaRefID_to_totalMappedReads.tsv", sep='\t')
 
     # Mask all but the maximum match length for each reference
     masked_mat = mask_non_max_values(lm_matrix, ambig_array)
@@ -461,18 +547,51 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
 
     # Filter out all but the top n read mapping references for each read
     filtered_mat = filter_highest_mapped_reads(total_reads_mat, ambig_array)
-    filtered_mat_binary = np.where(filtered_mat > 0, 1, 0)
 
-    # Filter out low-complexity reads
+    filtered_mat_binary_sparse = sp.csr_matrix((filtered_mat > 0).astype(int))
+
     if filterLowComplex:
-        fail_dust_mask = ~pass_dust_array.astype(bool)
-        filtered_mat_binary[:, fail_dust_mask] = 0
+        # Convert pass_dust_array_sparse to a column vector
+        pass_dust_array_sparse = pass_dust_array.T
+
+        # Create a mask for low-complexity reads
+        fail_dust_mask_dense = ~pass_dust_array_sparse.toarray().astype(bool)
+        fail_dust_mask_sparse = sp.csr_matrix(fail_dust_mask_dense.reshape(1, -1))
+
+        # Apply the mask to the binary sparse matrix
+        filtered_mat_binary_sparse = filtered_mat_binary_sparse.multiply(~fail_dust_mask_sparse)
+
+    # filtered_mat_binary = np.where(filtered_mat > 0, 1, 0)
+    #
+    # # Filter out low-complexity reads
+    # if filterLowComplex:
+    #     fail_dust_mask = ~pass_dust_array.astype(bool)
+    #     filtered_mat_binary[:, fail_dust_mask] = 0
 
     # Create an alignment DataFrame from the filtered matrix
-    df = pd.DataFrame(filtered_mat_binary, index=ref_ids, columns=read_names)
 
-    # Filter out empty rows and columns
-    alignments_dataframe = df.loc[(df.sum(axis=1) != 0), (df.sum(axis=0) != 0)]
+    non_zero_rows = np.flatnonzero(filtered_mat_binary_sparse.sum(axis=1) != 0)
+    # non_zero_rows = np.flatnonzero(filtered_mat_binary_sparse.sum(axis=1).toarray() != 0)
+    non_zero_cols = np.flatnonzero(filtered_mat_binary_sparse.sum(axis=0) != 0)
+    # non_zero_cols = np.flatnonzero(filtered_mat_binary_sparse.sum(axis=0).toarray() != 0)
+
+    # Filter out zero rows and columns from the sparse matrix
+    filtered_sparse = filtered_mat_binary_sparse[non_zero_rows, :][:, non_zero_cols]
+
+    # Convert the filtered sparse matrix to a dense NumPy array
+    filtered_dense = filtered_sparse.toarray()
+
+    # filter ref_ids and read anmes by non_zero_rows and cols
+    ref_ids = [ref_ids[i] for i in non_zero_rows]
+    read_names = [read_names[i] for i in non_zero_cols]
+
+    # Create a dense DataFrame from the filtered array
+    alignments_dataframe = pd.DataFrame(filtered_dense, index=ref_ids, columns=read_names)
+
+    # df = pd.DataFrame(filtered_mat_binary, index=ref_ids, columns=read_names)
+    #
+    # # Filter out empty rows and columns
+    # alignments_dataframe = df.loc[(df.sum(axis=1) != 0), (df.sum(axis=0) != 0)]
 
     print()
     print(f"Saving alignment matrix of dimensions {len(alignments_dataframe.index)} references x {len(alignments_dataframe.columns)} reads")
@@ -530,23 +649,23 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
 
 
 def main(argv):
-    mapParse = argp.ArgumentParser()
-    mapParse.add_argument('bam1')
-    mapParse.add_argument('bam2', nargs='?', help='(optional)', default='not supplied')
-    mapParse.add_argument('-r', '--reference', default=0)
-    mapParse.add_argument('-o', '--outname', type=str, default='./hlaType')
-    mapParse.add_argument('-d', '--disabledust', action='store_true')
-    mapParse.add_argument('-y', '--ylimit', type=int, help='fix a maximum y-value for all coverage map axes', default=0)
-    args = mapParse.parse_args()
+    # mapParse = argp.ArgumentParser()
+    # mapParse.add_argument('bam1')
+    # mapParse.add_argument('bam2', nargs='?', help='(optional)', default='not supplied')
+    # mapParse.add_argument('-r', '--reference', default=0)
+    # mapParse.add_argument('-o', '--outname', type=str, default='./hlaType')
+    # mapParse.add_argument('-d', '--disabledust', action='store_true')
+    # mapParse.add_argument('-y', '--ylimit', type=int, help='fix a maximum y-value for all coverage map axes', default=0)
+    # args = mapParse.parse_args()
+    #
+    # hlaBams = [args.bam1]
+    # if args.bam2 != "not supplied":
+    #     hlaBams += [args.bam2]
 
-    hlaBams = [args.bam1]
-    if args.bam2 != "not supplied":
-        hlaBams += [args.bam2]
-
-    # hlaBams = ['/Users/zacheliason/Downloads/hla-em/output_paired/trial_0/trial_0.1.Aligned.out.bam']
-    # ref = '/Users/zacheliason/Downloads/hla-em/hla_gen_ABC.fasta'
-    # mapReads(hlaBams, hlaRefPath=ref, filterLowComplex=False, outputName='out')
-    mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
+    hlaBams = ['/Users/zacheliason/Downloads/hla-em/output_paired/trial_0/trial_0.1.Aligned.out.bam']
+    ref = '/Users/zacheliason/Downloads/hla-em/hla_gen_ABC.fasta'
+    mapReads(hlaBams, hlaRefPath=ref, filterLowComplex=False, outputName='out', suppressOutputAndFigures=True)
+    # mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
 
 
 if __name__ == "__main__":

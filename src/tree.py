@@ -100,9 +100,10 @@ def train_tree_model(training_data_path):
     python_tree_code = tree_to_code(clf, feature_names=feature_names)
     return python_tree_code
 
-training_path = '/Users/zacheliason/Downloads/hla-em/output_training/training.tsv'
+# training_path = '/Users/zacheliason/Downloads/hla-em/output_training/training.tsv'
+training_path = '/Users/zacheliason/Downloads/hla-em/output_paired/training.tsv'
 
-# add_labels('/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv', training_path)
+add_labels('/Users/zacheliason/Downloads/hla-em/reference_paired/allele_record.csv', training_path)
 python_code = train_tree_model(training_path)
 print(python_code)
 print()

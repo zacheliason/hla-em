@@ -1,10 +1,10 @@
-FROM python:3.11 as uv_build
-
-ENV VIRTUAL_ENV=/home/packages/.venv
-ADD https://astral.sh/uv/install.sh /install.sh
-RUN chmod -R 655 /install.sh \
-&& ./install.sh \
-&& rm /install.sh
+# FROM python:3.11 as uv_build
+#
+# ENV VIRTUAL_ENV=/home/packages/.venv
+# ADD https://astral.sh/uv/install.sh /install.sh
+# RUN chmod -R 655 /install.sh \
+# && ./install.sh \
+# && rm /install.sh
 
 # Stage 1: Build STAR
 FROM ubuntu:20.04 as main
@@ -67,11 +67,11 @@ ENV HDF5_DIR=/usr/local
 RUN apt-get update \
 && apt-get install -y python3 python3-pip
 
-COPY --from=uv_build /root/.cargo/bin/uv /usr/local/bin/uv
+# COPY --from=uv_build /root/.cargo/bin/uv /usr/local/bin/uv
 
 # Set up a virtual environment and install requirements
-ENV VIRTUAL_ENV=/home/packages/.venv
-RUN /usr/local/bin/uv venv /home/packages/.venv
+# ENV VIRTUAL_ENV=/home/packages/.venv
+# RUN /usr/local/bin/uv venv /home/packages/.venv
 
 # Copy the requirements.txt file
 COPY ./requirements.txt .
@@ -81,7 +81,8 @@ RUN apt-get update && apt-get install -y gfortran
 
 
 # Install Python dependencies using uv
-RUN /usr/local/bin/uv pip install --no-cache -r requirements.txt
+# RUN /usr/local/bin/uv pip install --no-cache -r requirements.txt
+RUN pip install -r requirements.txt
 
 
 

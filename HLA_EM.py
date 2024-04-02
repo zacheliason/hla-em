@@ -154,8 +154,8 @@ def main(args=None):
     outname = os.path.join(args.outname, base_outname)
 
     args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
-    if not os.path.exists(args.starHLA):
-        indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
+    # if not os.path.exists(args.starHLA):
+    #     indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
     if args.threads < 1:
         args.threads = 1
@@ -272,7 +272,7 @@ def main(args=None):
 
         print(f"CreateMappedReads took {time_end - time_start} seconds")
 
-    if not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
+    if True: #not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
         print("Running EM algorithm", flush=True)
 
         time_start = time.time()
