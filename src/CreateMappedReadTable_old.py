@@ -1,147 +1,84 @@
 #!/usr/bin/env python
 
 from subprocess import Popen, PIPE
-from collections import Counter
 import argparse as argp
 import pandas as pd
 import numpy as np
-import subprocess
 import traceback
-import pysam
 import json
 import time
 import sys
 import re
 
 
+class AlignInfo:
+    def __init__(self, match_length, error_length, pos, cigar):
+        self.match_length = match_length
+        self.error_length = error_length
+        self.pos = pos
+        self.cigar = cigar
+
+
+class ReadAligns:
+    def __init__(self, *args):
+        if len(args) == 3:
+            self.ambig, self.passDust, self.hlaRefID_to_AlignInfo = args
+
+        else:
+            refId, passDust, mate, match_length, error_length, pos, cigar = args
+
+            mate = int(mate) - 1
+            match_length = int(match_length)
+            error_length = int(error_length)
+            pos = int(pos)
+            self.ambig = False
+            self.passDust = [False, False]
+            self.passDust[mate] = passDust
+            self.hlaRefID_to_AlignInfo = {}
+            self.hlaRefID_to_AlignInfo[refId] = [0, 0]
+            self.hlaRefID_to_AlignInfo[refId][mate] = AlignInfo(match_length, error_length, pos, cigar)
+
+    def addAlign(self, refId, passDust, mate, match_length, error_length, pos, cigar):
+        mate = int(mate) - 1
+        match_length = int(match_length)
+        error_length = int(error_length)
+        pos = int(pos)
+        if refId in self.hlaRefID_to_AlignInfo:
+            if self.hlaRefID_to_AlignInfo[refId][mate]:
+                if match_length > self.hlaRefID_to_AlignInfo[refId][mate].match_length:
+                    self.hlaRefID_to_AlignInfo[refId][mate] = AlignInfo(match_length, error_length, pos, cigar)
+                    self.passDust[mate] = self.passDust[mate] or passDust
+            else:
+                self.hlaRefID_to_AlignInfo[refId][mate] = AlignInfo(match_length, error_length, pos, cigar)
+                self.passDust[mate] = self.passDust[mate] or passDust
+        else:
+            self.ambig = True
+            self.passDust[mate] = self.passDust[mate] or passDust
+            self.hlaRefID_to_AlignInfo[refId] = [0, 0]
+            self.hlaRefID_to_AlignInfo[refId][mate] = AlignInfo(match_length, error_length, pos, cigar)
+
 
 # Calculate score to identify low-complexity reads using DUST algorithm
 # (S>2 should be filtered)
 def dust(read):
-    triplet_counts = Counter(read[i:i+3] for i in range(len(read) - 2))
-    l = len(read) - 2
+    tripletDict = {}
+    for i in range(len(read) - 2):
+        c = read[i:i + 3]
+        if c in tripletDict:
+            tripletDict[c] += 1
+        else:
+            tripletDict[c] = 1
     S = 0
-    for count in triplet_counts.values():
-        S += count * (count - 1) / 2 / (l - 1)
+    l = len(read) - 2
+    for trip in tripletDict:
+        c = float(tripletDict[trip])
+        S += c * (c - 1) / 2 / (l - 1)
     return S
 
 
-def fast_load_alignments_from_bam(hlaBams, filterLowComplexity):
-    readNames_to_aligns = {}
-    hlaRefIdMappedSet = set()
-    hlaRefID_to_totalMappedReads = {}
-
-    # For all HLA*.bam files in directory
-    for bam in hlaBams:
-        # bamfile = pysam.AlignmentFile(bam, 'rb')
-        # sorted_bam_file = bam.replace('.bam', '.sorted.bam')
-        # pysam.sort('-o', sorted_bam_file, '-O', "BAM", bam)
-        # bamfile.close()
-        # pysam.index(sorted_bam_file)
-        # with pysam.AlignmentFile(sorted_bam_file, 'rb') as samfile:
-        cmdArgs = ['samtools', 'view', '-c', bam]
-        result = subprocess.run(cmdArgs, stdout=subprocess.PIPE, encoding='utf-8')
-        num_alignments = int(result.stdout.strip())
-
-        cmdArgs = ['samtools', 'view', bam]
-        if sys.version[0] == '2':
-            pipe = Popen(cmdArgs, stdout=PIPE)
-        else:
-            pipe = Popen(cmdArgs, stdout=PIPE, encoding='utf8')
-
-        # loop over lines
-        ctr = 0
-        for line in pipe.stdout:
-            # Get read name from field 0, SAM flags from f1, ref id from f2,
-            # position from f3, seq from field 9, and tags from field 11
-            line = line.strip().split('\t')
-            # num_alignments = samfile.count()
-            # for read in samfile.fetch():
-            ctr += 1
-            if ctr % 1000 == 0:
-                print(f"  processing alignment {ctr}/{num_alignments}", end='\r')
-
-            readName = line[0]
-            readRefId = line[2]
-            readPos = int(line[3])
-            readCIGAR = line[5]
-            readSeq = line[9]
-            readTags = line[11:]
-
-            # read_length = read.query_length
-
-            try:
-                editDist = [tag for tag in readTags if tag.startswith('NM')][0].split(':')[-1]
-            except:
-                print('Error parsing tags:')
-                print(readName)
-                print(readTags)
-                print(line)
-                print()
-                print(traceback.format_exc())
-                continue
-
-            # Add this read to the dictionary
-            cigarList = list(filter(None, re.split('(\D+)', readCIGAR)))
-            alignedSeq = ''
-            pos = 0
-
-            for cigar in zip(cigarList[0::2], cigarList[1::2]):
-                clen = int(cigar[0])
-                if cigar[1] in 'M=XIP':
-                    alignedSeq += readSeq[pos:pos + clen]
-                    pos += clen
-                elif cigar[1] in 'SH':
-                    pos += clen
-
-            # if len(alignedSeq) != read_length:
-            #     print()
-
-            # Get proper length of matching using corrected readlength
-            error_length = int(editDist)
-            match_length = len(alignedSeq) - error_length
-
-            if filterLowComplexity:
-                passDust = dust(alignedSeq) <= 2
-            else:
-                passDust = True
-
-            # Disallow clipping on both ends
-            if cigarList[1] in 'HS' and cigarList[-1] in 'HS':
-                passDust = False
-
-            hlaRefIdMappedSet.add(readRefId)
-
-            if readName not in readNames_to_aligns:
-                readNames_to_aligns[readName] = {}
-            if readRefId not in readNames_to_aligns[readName]:
-                readNames_to_aligns[readName][readRefId] = {
-                    'passDust': passDust,
-                    'match_length': match_length,
-                    'error_length': error_length,
-                    'readPos': readPos,
-                    'readCIGAR': readCIGAR
-                }
-            else:
-                if match_length > readNames_to_aligns[readName][readRefId]['match_length']:
-                    readNames_to_aligns[readName][readRefId] = {
-                        'passDust': passDust or readNames_to_aligns[readName][readRefId]['passDust'],
-                        'match_length': match_length,
-                        'error_length': error_length,
-                        'readPos': readPos,
-                        'readCIGAR': readCIGAR
-                    }
-
-            if readRefId in hlaRefID_to_totalMappedReads:
-                hlaRefID_to_totalMappedReads[readRefId] += 1
-            else:
-                hlaRefID_to_totalMappedReads[readRefId] = 1
-
-    return readNames_to_aligns, hlaRefIdMappedSet, hlaRefID_to_totalMappedReads
-
-
+# Convert read alignment information into matrixes and arrays
 def create_hla_read_matrix(readNames_to_aligns):
-    read_names = list(sorted(readNames_to_aligns.keys()))
+    read_names = list(readNames_to_aligns.keys())
     ref_ids = set()
 
     # Get list of all ref IDs observed
@@ -182,54 +119,6 @@ def create_hla_read_matrix(readNames_to_aligns):
 
             match_length_matrix[ref_id_index, j] = lm
             error_length_matrix[ref_id_index, j] = em
-
-    return match_length_matrix, error_length_matrix, ambig_array, pass_dust_array, ref_ids, read_names, ref_id_to_index, read_name_to_index
-
-
-
-
-# Convert read alignment information into matrixes and arrays
-def fast_create_hla_read_matrix(readNames_to_aligns):
-    read_names = list(sorted(readNames_to_aligns.keys()))
-    ref_ids = set()
-
-    # Get list of all ref IDs observed
-    for readName, values in readNames_to_aligns.items():
-        ref_ids.update(values.keys())
-
-    ref_ids = sorted(ref_ids)
-    num_reads = len(read_names)
-    num_ref_ids = len(ref_ids)
-
-    # Create a mapping from ref_id to index to speed up indexing
-    read_name_to_index = {read_name: i for i, read_name in enumerate(read_names)}
-    ref_id_to_index = {ref_id: i for i, ref_id in enumerate(ref_ids)}
-
-    match_length_matrix = np.zeros((num_ref_ids, num_reads), dtype=int)
-    error_length_matrix = np.zeros((num_ref_ids, num_reads), dtype=int)
-    ambig_array = np.zeros(num_reads, dtype=int)
-    pass_dust_array = np.zeros(num_reads, dtype=int)
-
-    # matrices have ref_ids as rows and read_names as columns
-    # ambiguous and pass_dust arrays have length equal to the number of read_names
-    for j, read_name in enumerate(read_names):
-        read_alignments = readNames_to_aligns[read_name]
-
-        for ref_id, alignment_dict in read_alignments.items():
-            ref_id_index = ref_id_to_index[ref_id]
-            match_length = alignment_dict['match_length']
-            error_length = alignment_dict['error_length']
-            pass_dust = alignment_dict['passDust']
-            pass_dust_array[j] = pass_dust
-
-            match_length_matrix[ref_id_index, j] = match_length
-            error_length_matrix[ref_id_index, j] = error_length
-
-
-    # ambig_array[j] = len(read_alignments['readRefId']) > 1
-    # pass_dust_array[j] = any(read_alignments['passDust'])
-    ambig_matrix = np.where(match_length_matrix > 0, 1, 0)
-    ambig_array = np.sum(ambig_matrix, axis=0) > 1
 
     return match_length_matrix, error_length_matrix, ambig_array, pass_dust_array, ref_ids, read_names, ref_id_to_index, read_name_to_index
 
@@ -386,7 +275,7 @@ def load_alignments_from_bam(hlaBams):
     return readNames_to_aligns, hlaRefIdMappedSet, hlaRefID_to_totalMappedReads
 
 
-def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputName='hlaType', covMapYmax=0, suppressOutputAndFigures=False):
+def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=True, outputName='hlaType', covMapYmax=0, suppressOutputAndFigures=False):
     # Update coverage arrays
     def update_coverage(refId, readAlign):
         # Get the sequence length for this refId
@@ -415,14 +304,21 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
                     elif opCode in 'DN':
                         pos += opLength
 
+                # # Mark any genes this read covers
+                # if refId in hlaRefIdGeneDict:
+                #     for gene in hlaRefIdGeneDict[refId]:
+                #         gName, gStart, gEnd = gene
+                #         gStart, gEnd = int(gStart), int(gEnd)
+                #         if np.any(np.logical_and(pos >= gStart, pos < gEnd)):
+                #             geneSet.add(gName)
+
     hlaRefIdGeneDict = {}
     hlaRefIdCovArrays = {}
     hlaRefIdCovDict = {}
 
     hlaRefID_to_seq, hlaRefID_to_type = load_hla_ref(hlaRefPath)
 
-    readNames_to_aligns, hlaRefIdMappedSet, hlaRefID_to_totalMappedReads = fast_load_alignments_from_bam(hlaBams, filterLowComplex)
-    lm_matrix, em_matrix, ambig_array, pass_dust_array, ref_ids, read_names, ref_id_to_index, read_name_to_index = fast_create_hla_read_matrix(readNames_to_aligns)
+    readNames_to_aligns, hlaRefIdMappedSet, hlaRefID_to_totalMappedReads = load_alignments_from_bam(hlaBams)
 
     if not suppressOutputAndFigures:
         # only create coverage plots for ref_ids mapping to at least a third of the maximum number of reads
@@ -452,6 +348,8 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
             }
             json.dump(json_obj, outFile)
 
+    # Create matrixes and arrays from read alignment information
+    lm_matrix, em_matrix, ambig_array, pass_dust_array, ref_ids, read_names, ref_id_to_index, read_name_to_index = create_hla_read_matrix(readNames_to_aligns)
 
     # Mask all but the maximum match length for each reference
     masked_mat = mask_non_max_values(lm_matrix, ambig_array)
@@ -543,9 +441,6 @@ def main(argv):
     if args.bam2 != "not supplied":
         hlaBams += [args.bam2]
 
-    # hlaBams = ['/Users/zacheliason/Downloads/hla-em/output_paired/trial_0/trial_0.1.Aligned.out.bam']
-    # ref = '/Users/zacheliason/Downloads/hla-em/hla_gen_ABC.fasta'
-    # mapReads(hlaBams, hlaRefPath=ref, filterLowComplex=False, outputName='out')
     mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
 
 

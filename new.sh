@@ -11,10 +11,11 @@ for trial in {0..47}; do
 
     echo ""
     echo "now working on ${TRIAL_DIR}"
-    OUTPUT_DIR="${VOLUME_PATH}/output_training/trial_${trial}"
+    OUTPUT_DIR="${VOLUME_PATH}/output_big/trial_${trial}"
 
     python3 "${VOLUME_PATH}/HLA_EM.py" \
         -t 4 \
+        -d \
         --shortcut \
         --suppress_figs \
         --training ${VOLUME_PATH}/output_training/training.tsv \
