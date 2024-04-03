@@ -162,8 +162,8 @@ def main(args=None):
     outname = os.path.join(args.outname, base_outname)
 
     args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
-    # if not os.path.exists(args.starHLA):
-    #     indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
+    if not os.path.exists(args.starHLA):
+        indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
     if args.threads < 1:
         args.threads = 1
