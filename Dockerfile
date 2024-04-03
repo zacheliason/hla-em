@@ -7,7 +7,7 @@
 # && rm /install.sh
 
 # Stage 1: Build STAR
-FROM ubuntu:20.04 as main
+FROM ubuntu:20.04 AS main
 
 # Set environmental variables to use my tools on MGI
 ENV WD=/usr/local/bin/ \
@@ -69,10 +69,6 @@ RUN apt-get update \
 
 # COPY --from=uv_build /root/.cargo/bin/uv /usr/local/bin/uv
 
-# Set up a virtual environment and install requirements
-# ENV VIRTUAL_ENV=/home/packages/.venv
-# RUN /usr/local/bin/uv venv /home/packages/.venv
-
 # Copy the requirements.txt file
 COPY ./requirements.txt .
 
@@ -128,6 +124,8 @@ WORKDIR $WD
 
 # RUN apt-get update && apt-get install -y git
 
+FROM main AS final
+
 # Clone the repository
 RUN git clone https://github.com/zacheliason/hla-em.git
 
@@ -136,6 +134,8 @@ RUN curl -LJO -o /usr/local/bin/hla-em/hla_gen.fasta https://raw.githubuserconte
 
 # Set the working directory to the cloned repository
 WORKDIR /usr/local/bin/hla-em
+
+RUN curl -LJO https://raw.githubusercontent.com/ANHIG/IMGTHLA/master/hla_gen.fasta
 
 # Modify the Python script in-place
 RUN sed -i -e '1i#!/usr/bin/env python3\n' HLA_EM.py

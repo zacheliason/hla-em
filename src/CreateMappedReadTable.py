@@ -160,7 +160,6 @@ def create_hla_read_matrix(readNames_to_aligns):
     match_length_matrix = np.zeros((num_ref_ids, num_reads), dtype=int)
     error_length_matrix = np.zeros((num_ref_ids, num_reads), dtype=int)
     ambig_array = np.zeros(num_reads, dtype=int)
-    pass_dust_array = np.zeros(num_reads, dtype=int)
 
     # matrices have ref_ids as rows and read_names as columns
     # ambiguous and pass_dust arrays have length equal to the number of read_names
@@ -172,7 +171,6 @@ def create_hla_read_matrix(readNames_to_aligns):
         pass_dust = any(x for x in read_align.passDust)
 
         ambig_array[j] = ambiguous
-        pass_dust_array[j] = pass_dust
 
         for ref_id in read_alignments.keys():
             ref_id_index = ref_id_to_index[ref_id]
@@ -184,7 +182,7 @@ def create_hla_read_matrix(readNames_to_aligns):
             match_length_matrix[ref_id_index, j] = lm
             error_length_matrix[ref_id_index, j] = em
 
-    return match_length_matrix, error_length_matrix, ambig_array, pass_dust_array, ref_ids, read_names, ref_id_to_index, read_name_to_index
+    return match_length_matrix, error_length_matrix, ambig_array, ref_ids, read_names, ref_id_to_index, read_name_to_index
 
 
 
@@ -209,7 +207,6 @@ def fast_create_hla_read_matrix(readNames_to_aligns):
     match_length_matrix = np.zeros((num_ref_ids, num_reads), dtype=int)
     error_length_matrix = np.zeros((num_ref_ids, num_reads), dtype=int)
     ambig_array = np.zeros(num_reads, dtype=int)
-    pass_dust_array = np.zeros(num_reads, dtype=int)
 
     # matrices have ref_ids as rows and read_names as columns
     # ambiguous and pass_dust arrays have length equal to the number of read_names
@@ -221,29 +218,25 @@ def fast_create_hla_read_matrix(readNames_to_aligns):
             match_length = alignment_dict['match_length']
             error_length = alignment_dict['error_length']
             pass_dust = alignment_dict['passDust']
-            pass_dust_array[j] = pass_dust
 
             match_length_matrix[ref_id_index, j] = match_length
             error_length_matrix[ref_id_index, j] = error_length
 
 
     # ambig_array[j] = len(read_alignments['readRefId']) > 1
-    # pass_dust_array[j] = any(read_alignments['passDust'])
     ambig_matrix = np.where(match_length_matrix > 0, 1, 0)
     ambig_array = np.sum(ambig_matrix, axis=0) > 1
 
     match_length_matrix_sparse = sp.csr_matrix(match_length_matrix)
     error_length_matrix_sparse = sp.csr_matrix(error_length_matrix)
     # ambig_array_sparse = sp.csr_matrix(ambig_array.reshape(1, -1))
-    # pass_dust_array_sparse = sp.csr_matrix(pass_dust_array.reshape(1, -1))
 
     # Remove references to dense matrices
     del match_length_matrix
     del error_length_matrix
     # del ambig_array
-    # del pass_dust_array
 
-    return match_length_matrix_sparse, error_length_matrix_sparse, ambig_array, pass_dust_array, ref_ids, read_names, ref_id_to_index, read_name_to_index
+    return match_length_matrix_sparse, error_length_matrix_sparse, ambig_array, ref_ids, read_names, ref_id_to_index, read_name_to_index
 
 
 # Only keep alignments with the maximum match length for each reference
@@ -469,7 +462,7 @@ def load_alignments_from_bam(hlaBams):
 
 def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputName='hlaType', covMapYmax=0, suppressOutputAndFigures=False):
     # Update coverage arrays
-    def update_coverage(refId, readAlign):
+    def update_coverage(refId, alignment_dict):
         # Get the sequence length for this refId
         seq_len = len(hlaRefID_to_seq[refId])
 
@@ -480,21 +473,20 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
         # Iterate over the two mates
         for i in range(2):
             mate = readAlign.hlaRefID_to_AlignInfo[refId][i]
-            if mate:
-                cigarList = list(filter(None, re.split('(\D+)', mate.cigar)))
-                pos = mate.pos - 1  # Convert to 0-based indexing
+            cigarList = list(filter(None, re.split('(\D+)', alignment_dict["readCIGAR"])))
+            pos = alignment_dict['readPos']
 
-                # Parse the CIGAR string
-                opCodes = [op[-1] for op in cigarList[1::2]]
-                opLengths = [int(length) for length in cigarList[0::2]]
+            # Parse the CIGAR string
+            opCodes = [op[-1] for op in cigarList[1::2]]
+            opLengths = [int(length) for length in cigarList[0::2]]
 
-                # Update the coverage array based on the CIGAR operations
-                for opCode, opLength in zip(opCodes, opLengths):
-                    if opCode in 'M=X':
-                        hlaRefIdCovArrays[refId][pos:pos + opLength] += 1
-                        pos += opLength
-                    elif opCode in 'DN':
-                        pos += opLength
+            # Update the coverage array based on the CIGAR operations
+            for opCode, opLength in zip(opCodes, opLengths):
+                if opCode in 'M=X':
+                    hlaRefIdCovArrays[refId][pos:pos + opLength] += 1
+                    pos += opLength
+                elif opCode in 'DN':
+                    pos += opLength
 
     hlaRefIdGeneDict = {}
     hlaRefIdCovArrays = {}
@@ -503,7 +495,7 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
     hlaRefID_to_seq, hlaRefID_to_type = load_hla_ref(hlaRefPath)
 
     readNames_to_aligns, hlaRefIdMappedSet, hlaRefID_to_totalMappedReads = fast_load_alignments_from_bam(hlaBams, filterLowComplex)
-    lm_matrix, em_matrix, ambig_array, pass_dust_array, ref_ids, read_names, ref_id_to_index, read_name_to_index = fast_create_hla_read_matrix(readNames_to_aligns)
+    lm_matrix, em_matrix, ambig_array, ref_ids, read_names, ref_id_to_index, read_name_to_index = fast_create_hla_read_matrix(readNames_to_aligns)
 
     if not suppressOutputAndFigures:
         # only create coverage plots for ref_ids mapping to at least a third of the maximum number of reads
@@ -516,9 +508,9 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
         top_ref_ids = {x for x in hlaRefIdMappedSet if hlaRefID_to_totalMappedReads[x] >= threshold}
 
         for readName, readAlign in readNames_to_aligns.items():
-            for refId in readAlign.hlaRefID_to_AlignInfo:
+            for refId, alignment_dict in readAlign.items():
                 if refId in top_ref_ids:
-                    update_coverage(refId, readAlign)
+                    update_coverage(refId, alignment_dict)
 
         for refId, covArray in hlaRefIdCovArrays.items():
             hlaRefIdCovDict[refId] = covArray.tolist()
@@ -536,7 +528,6 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
     # save lm_matrix and em_matrix as dfs
     # pd.DataFrame(lm_matrix, index=ref_ids, columns=read_names).to_csv(f'{outputName}.lm_matrix.tsv', sep='\t')
     # np.savetxt(f'{outputName}.ambig_array.tsv', ambig_array, fmt='%d')
-    # np.savetxt(f'{outputName}.pass_dust_array.tsv', pass_dust_array, fmt='%d')
     # pd.DataFrame(hlaRefID_to_totalMappedReads.items(), columns=['ref_id', 'total_mapped_reads']).to_csv(f"{outputName}.hlaRefID_to_totalMappedReads.tsv", sep='\t')
 
     # Mask all but the maximum match length for each reference
@@ -550,23 +541,8 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
 
     filtered_mat_binary_sparse = sp.csr_matrix((filtered_mat > 0).astype(int))
 
-    if filterLowComplex:
-        # Convert pass_dust_array_sparse to a column vector
-        pass_dust_array_sparse = pass_dust_array.T
-
-        # Create a mask for low-complexity reads
-        fail_dust_mask_dense = ~pass_dust_array_sparse.toarray().astype(bool)
-        fail_dust_mask_sparse = sp.csr_matrix(fail_dust_mask_dense.reshape(1, -1))
-
-        # Apply the mask to the binary sparse matrix
-        filtered_mat_binary_sparse = filtered_mat_binary_sparse.multiply(~fail_dust_mask_sparse)
 
     # filtered_mat_binary = np.where(filtered_mat > 0, 1, 0)
-    #
-    # # Filter out low-complexity reads
-    # if filterLowComplex:
-    #     fail_dust_mask = ~pass_dust_array.astype(bool)
-    #     filtered_mat_binary[:, fail_dust_mask] = 0
 
     # Create an alignment DataFrame from the filtered matrix
 
@@ -588,6 +564,10 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
     # Create a dense DataFrame from the filtered array
     alignments_dataframe = pd.DataFrame(filtered_dense, index=ref_ids, columns=read_names)
 
+    if filterLowComplex:
+        dust_values = [dust(hlaRefID_to_seq[refId]) for refId in ref_ids]
+        pass_dust_array = [v <= 2 for v in dust_values]
+
     # df = pd.DataFrame(filtered_mat_binary, index=ref_ids, columns=read_names)
     #
     # # Filter out empty rows and columns
@@ -606,7 +586,7 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
         read_index = read_names.index(readName)
 
         read_is_ambig = ambig_array[read_index]
-        read_passes_dust = pass_dust_array[read_index]
+        read_passes_dust = True #pass_dust_array[read_index]
 
         if not (filterLowComplex and not read_passes_dust):
             mappedCount += 1
