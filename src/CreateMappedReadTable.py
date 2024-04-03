@@ -640,7 +640,6 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
                     outLine += '\t0\t-1\t-1\t'
             outTable.append(outLine)
 
-
     with open(outputName + '.mappedReads.tsv', 'w') as outFile:
         for line in outTable:
             outFile.write(str(line) + '\n')

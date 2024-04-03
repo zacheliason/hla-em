@@ -14,11 +14,6 @@ import re
 
 __version__ = "1.0.2"
 
-# TODO remove
-os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
-print(os.getcwd())
-print(os.listdir(os.getcwd()))
-
 
 def prereqs():
     programs = ["python3", "samtools"]#, "STAR"]
@@ -104,6 +99,19 @@ def get_read_counts_from_log(filepath):
 
 
 def main(args=None):
+    # TODO remove
+    # os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
+    print('cwd')
+    print(os.getcwd())
+    print(os.listdir(os.getcwd()))
+    print()
+
+    print('install dir')
+    installDir = os.path.dirname(os.path.abspath(__file__))
+    print(installDir)
+    print(os.listdir(installDir))
+    print()
+
     if args is None:
         installDir = os.path.dirname(os.path.abspath(__file__))
 

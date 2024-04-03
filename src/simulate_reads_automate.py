@@ -14,8 +14,20 @@ import re
 
 
 # Path to the local directory open_docker.sh is in and that run_all_bash.sh writes to
-PARENT_DIR = os.path.join(os.path.dirname(os.getcwd()))
+PARENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
 REFERENCE_DIR = os.path.join(PARENT_DIR, 'reference')
+
+if not os.path.exists(REFERENCE_DIR):
+    os.makedirs(REFERENCE_DIR)
+    print(os.listdir(PARENT_DIR))
+    tsv_files = []
+    for file in os.listdir(PARENT_DIR):
+        if file.endswith(".tsv"):
+            tsv_files.append(os.path.join(PARENT_DIR, file))
+
+    TCGA_file = tsv_files[0]
+    target_file= os.path.join(REFERENCE_DIR, os.path.basename(TCGA_file))
+    shutil.copyfile(TCGA_file, target_file)
 
 
 def apply_loss_of_heterozygousity(alleles, num_lost_alleles):
