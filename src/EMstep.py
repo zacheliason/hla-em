@@ -170,7 +170,7 @@ def EmAlgo(readsTable, outname, thresholdTpm=1.5):
 
     df = pd.DataFrame(output_lines)
     df = df.sort_values('MLE_Probability', ascending=False)
-    df.to_csv(outname + ".results.tsv", sep='\t', index=False)
+    df.to_csv(outname + ".emresults.tsv", sep='\t', index=False)
 
     with open(f"{outname}.em_algorithm.Log", "w") as f:
         f.write(f"Converged to < {conVal:.1e} in {steps_out} iterations\n")

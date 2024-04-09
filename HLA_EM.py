@@ -265,11 +265,11 @@ def main(args=None):
         print("Creating read table", flush=True)
         readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation, suppressOutputAndFigures=args.suppress_figs)
 
-    if not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
+    if not args.shortcut or not (os.path.exists('{}.emresults.tsv'.format(outname))):
         print("Running EM algorithm", flush=True)
         EmAlgo(readsTable, outname=outname, thresholdTpm=args.tpm)
 
-    predictions = predict_genotype_from_MLE(outname + ".results.tsv", outname, base_outname, training_spreadsheet=args.training)
+    predictions = predict_genotype_from_MLE(outname + ".emresults.tsv", outname, base_outname, training_spreadsheet=args.training)
     predicted_types = predictions.index.values.tolist()
 
     print("PREDICTED HLA TYPES:")
@@ -280,7 +280,7 @@ def main(args=None):
     if not args.suppress_figs:
         # TODO remove try/except
         try:
-            plot_pie_charts(outname + ".final_predictions.csv", outname + ".results.tsv", outname)
+            plot_pie_charts(f"{outname}.final_predictions.csv", f"{outname}.emresults.tsv", outname)
             plot_coverage_maps(outname + ".cov_plot_args.json", predicted_types)
         except:
             print(traceback.format_exc())
