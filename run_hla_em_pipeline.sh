@@ -20,6 +20,8 @@ for trial in {0..24}; do
 
     docker run -it --rm -v "$HOST_PATH":"$VOLUME_PATH" zeliason/hla-em:latest \
         -t 4 \
+        -d \  # Disable dust for now, I haven't returned dust filtering to the pipeline yet
+        --suppress_figs \
         -o "${OUTPUT_DIR}" \
         -s "${VOLUME_PATH}/EnsembleGenome_STAR_without_scaffolds" \
         -r "${VOLUME_PATH}/hla_gen.fasta" \

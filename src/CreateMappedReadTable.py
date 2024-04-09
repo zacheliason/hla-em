@@ -101,10 +101,10 @@ def fast_load_alignments_from_bam(hlaBams, filterLowComplexity):
             error_length = int(editDist)
             match_length = len(alignedSeq) - error_length
 
-            if filterLowComplexity:
-                passDust = dust(alignedSeq) <= 2
-            else:
-                passDust = True
+            # if filterLowComplexity:
+            #     passDust = dust(alignedSeq) <= 2
+            # else:
+            passDust = True
 
             # Disallow clipping on both ends
             if cigarList[1] in 'HS' and cigarList[-1] in 'HS':
@@ -564,9 +564,11 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
     # Create a dense DataFrame from the filtered array
     alignments_dataframe = pd.DataFrame(filtered_dense, index=ref_ids, columns=read_names)
 
-    if filterLowComplex:
-        dust_values = [dust(hlaRefID_to_seq[refId]) for refId in ref_ids]
-        pass_dust_array = [v <= 2 for v in dust_values]
+    # if filterLowComplex:
+    #     dust_values = [dust(hlaRefID_to_seq[refId]) for refId in ref_ids]
+    #     pass_dust_array = [v <= 2 for v in dust_values]
+    # else:
+    #     pass_dist_array = np.ones(len(read_names), dtype=bool)
 
     # df = pd.DataFrame(filtered_mat_binary, index=ref_ids, columns=read_names)
     #
@@ -586,7 +588,7 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
         read_index = read_names.index(readName)
 
         read_is_ambig = ambig_array[read_index]
-        read_passes_dust = True #pass_dust_array[read_index]
+        read_passes_dust = True  # pass_dust_array[read_index]
 
         if not (filterLowComplex and not read_passes_dust):
             mappedCount += 1
