@@ -3,31 +3,10 @@ import pandas as pd
 import subprocess
 import random
 import shutil
+import argp
+import sys
 import os
 import re
-
-
-# NUM_TO_GENERATE = 5
-# NUM_READS = 1500
-# ERROR_RATE = .01
-# best_case = True
-
-
-# Path to the local directory open_docker.sh is in and that run_all_bash.sh writes to
-PARENT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)))
-REFERENCE_DIR = os.path.join(PARENT_DIR, 'reference')
-
-if not os.path.exists(REFERENCE_DIR):
-    os.makedirs(REFERENCE_DIR)
-    print(os.listdir(PARENT_DIR))
-    tsv_files = []
-    for file in os.listdir(PARENT_DIR):
-        if file.endswith(".tsv"):
-            tsv_files.append(os.path.join(PARENT_DIR, file))
-
-    TCGA_file = tsv_files[0]
-    target_file= os.path.join(REFERENCE_DIR, os.path.basename(TCGA_file))
-    shutil.copyfile(TCGA_file, target_file)
 
 
 def apply_loss_of_heterozygousity(alleles, num_lost_alleles):
@@ -51,14 +30,13 @@ def apply_loss_of_heterozygousity(alleles, num_lost_alleles):
     return updated_alleles
 
 
-def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=True, loh_number=0):
-    hla_gen_path = os.path.join(PARENT_DIR, 'hla_gen.fasta')
-    patient_filepath = os.path.join(REFERENCE_DIR, "TCGA_HLA_alleles.tsv")
-    allele_record_filepath = os.path.join(REFERENCE_DIR, 'allele_record.csv')
-    run_all_script = os.path.join(REFERENCE_DIR, "run_all_bash.sh")
+def simulate_hla_reads(num_to_generate, num_reads, reference_dir, hla_gen_path, error_rate=.01, best_case=True, loh_number=0):
+    patient_filepath = os.path.join(reference_dir, "TCGA_HLA_alleles.tsv")
+    allele_record_filepath = os.path.join(reference_dir, 'allele_record.csv')
+    run_all_script = os.path.join(reference_dir, "run_all_bash.sh")
 
-    if not os.path.exists(REFERENCE_DIR):
-        os.mkdir(REFERENCE_DIR)
+    if not os.path.exists(reference_dir):
+        os.mkdir(reference_dir)
 
     hla_bash_text = """
     #!/bin/bash
@@ -74,7 +52,7 @@ def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=Tru
         full_allele_record_df = None
 
     with open(run_all_script, "w") as run_all_bash_script:
-        bash_dir = os.path.join(REFERENCE_DIR, "bash")
+        bash_dir = os.path.join(reference_dir, "bash")
 
         run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', '*')}\n")
         run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', 'fastas', '*')}\n")
@@ -93,7 +71,7 @@ def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=Tru
             contents = hla_gen.read()
 
         for i in range(num_to_generate):
-            fasta_dir = os.path.join(REFERENCE_DIR, "fastas")
+            fasta_dir = os.path.join(reference_dir, "fastas")
 
             if not os.path.isdir(fasta_dir):
                 os.makedirs(fasta_dir)
@@ -102,7 +80,7 @@ def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=Tru
             dir_name = f"trial_{num_fastas}"
 
             fasta_path = os.path.join(fasta_dir, f"reference_{dir_name}.fa")
-            samples_dir = os.path.join(REFERENCE_DIR, "samples", dir_name)
+            samples_dir = os.path.join(reference_dir, "samples", dir_name)
             read01_path = os.path.join(samples_dir, "sim.HLA.reads_01.fq")
             read02_path = os.path.join(samples_dir, "sim.HLA.reads_02.fq")
 
@@ -162,7 +140,7 @@ def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=Tru
                 bash.write(hla_bash_text.replace("[TRIAL_NUM]", dir_name).replace("[NUM_READS]", str(num_reads)).replace("[ERROR_RATE]", str(error_rate)).replace("[REF_DIR]", 'scripts'))
 
             # Keep track of paths to simulated reads to a text file
-            with open(os.path.join(REFERENCE_DIR, "sample_paths.txt"), "a") as rd:
+            with open(os.path.join(reference_dir, "sample_paths.txt"), "a") as rd:
                 rd.write(read01_path + "\n")
                 rd.write(read02_path + "\n")
 
@@ -185,7 +163,7 @@ def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=Tru
 
     # Create a container for the docker image mounted to the reference directory
     # Inside this container, run the bash script that will simulate reads
-    wgsim_command = ["docker", "run", "--rm", "-v", f"{REFERENCE_DIR}:/scripts", "pegi3s/wgsim:latest", "/bin/bash", "-c", "bash ./scripts/run_all_bash.sh"]
+    wgsim_command = ["docker", "run", "--rm", "-v", f"{reference_dir}:/scripts", "pegi3s/wgsim:latest", "/bin/bash", "-c", "bash ./scripts/run_all_bash.sh"]
     result = subprocess.run(wgsim_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
     if result.returncode == 0:
@@ -198,27 +176,26 @@ def simulate_hla_reads(num_to_generate, num_reads, error_rate=.01, best_case=Tru
         exit(1)
 
 
-def simulate_masked_reads(num_to_generate, num_reads, error_rate=.01):
-    masked_human_genome_path = os.path.join(os.getcwd(), 'Genome.fa')
-    run_all_script = os.path.join(REFERENCE_DIR, "run_all_bash.sh")
+def simulate_masked_reads(masked_human_genome_path, reference_dir, num_to_generate, num_reads, error_rate=.01):
+    run_all_script = os.path.join(reference_dir, "run_all_bash.sh")
 
     masked_human_genome_bash_text = """
     #!/bin/bash
     REFDIR=[REF_DIR]
     OUTDIR=[REF_DIR]/reference/samples/[TRIAL_NUM]
 
-    echo 'simulating data' && wgsim -e [ERROR_RATE] -r 0 -h  -N [NUM_READS] -1 151 -2 151 -d 500 $REFDIR/MaskedHumanGenome.fa $OUTDIR/sim.masked.reads_01.fq $OUTDIR/sim.masked.reads_02.fq || exit 1;
+    echo 'simulating data' && wgsim -e [ERROR_RATE] -r 0 -h  -N [NUM_READS] -1 151 -2 151 -d 500 [MASKED_GENOME_PATH] $OUTDIR/sim.masked.reads_01.fq $OUTDIR/sim.masked.reads_02.fq || exit 1;
     cat $OUTDIR/sim.masked.reads_01.fq >> $OUTDIR/sim.HLA.reads_01.fq
     cat $OUTDIR/sim.masked.reads_02.fq >> $OUTDIR/sim.HLA.reads_02.fq
     # rm $OUTDIR/sim.masked.reads_01.fq
     # rm $OUTDIR/sim.masked.reads_02.fq
     """
 
-    if not os.path.exists(REFERENCE_DIR):
-        os.mkdir(REFERENCE_DIR)
+    if not os.path.exists(reference_dir):
+        os.mkdir(reference_dir)
 
     with open(run_all_script, "w") as run_all_bash_script:
-        bash_dir = os.path.join(REFERENCE_DIR, "bash")
+        bash_dir = os.path.join(reference_dir, "bash")
 
         run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', 'reference', '*')}\n")
         run_all_bash_script.write(f"chmod 700 {os.path.join('scripts', 'reference', 'fastas', '*')}\n")
@@ -226,10 +203,10 @@ def simulate_masked_reads(num_to_generate, num_reads, error_rate=.01):
 
         sample_dirs = []
         for i in range(num_to_generate):
-            curr_sample = len(os.listdir(os.path.join(REFERENCE_DIR, 'fastas'))) - num_to_generate + i
+            curr_sample = len(os.listdir(os.path.join(reference_dir, 'fastas'))) - num_to_generate + i
             dir_name = f"trial_{curr_sample}"
 
-            samples_dir = os.path.join(REFERENCE_DIR, "samples", dir_name)
+            samples_dir = os.path.join(reference_dir, "samples", dir_name)
             sample_dirs.append(samples_dir)
 
             if not os.path.isdir(samples_dir):
@@ -240,7 +217,7 @@ def simulate_masked_reads(num_to_generate, num_reads, error_rate=.01):
             # Write bash script file to simulate reads
             bash_path = os.path.join(bash_dir, f"sim_reads_{dir_name}.sh")
             with open(bash_path, 'w') as bash:
-                bash.write(masked_human_genome_bash_text.replace("[TRIAL_NUM]", dir_name).replace("[NUM_READS]", str(num_reads)).replace("[ERROR_RATE]", str(error_rate)).replace("[REF_DIR]", 'scripts'))
+                bash.write(masked_human_genome_bash_text.replace("[TRIAL_NUM]", dir_name).replace("[NUM_READS]", str(num_reads)).replace("[ERROR_RATE]", str(error_rate)).replace("[REF_DIR]", 'scripts').replace("[MASKED_GENOME_PATH]", masked_human_genome_path))
 
             # Because the docker mounts the reference directory to a new directory inside the container (called "scripts"),
             # the paths to the bash script are altered here
@@ -273,44 +250,104 @@ def simulate_masked_reads(num_to_generate, num_reads, error_rate=.01):
         exit(1)
 
 
-def create_large_tests():
-    num_masked_reads = 1000000
+def create_full_genome_samples(reference_dir, hla_gen_path, masked_genome_path, num_test_cases=5, total_num_reads=1000000, loh_number=0, error_rate=.01):
     test_cases = [100000, 50000, 10000, 5000, 1500]
-    num_per_test_case = 10
 
-    ctr = 0
     for num_hla_reads in test_cases:
-        num_human_reads = num_masked_reads - num_hla_reads
-        # if ctr == 0:
-        #     ctr += 1
-        #     continue
+        num_hla_reads_modified = (num_hla_reads // 6) * (6 - loh_number)
+        num_human_reads = total_num_reads - num_hla_reads_modified
+
+        random_num_test_cases = num_test_cases // 2
+        best_num_test_cases = num_test_cases // 2
+
+        if num_test_cases % 2 != 0:
+            best_num_test_cases += 1
 
         # simulate hla reads using best case HLA alleles from TCGA data
-        simulate_hla_reads(num_per_test_case // 2, num_hla_reads, best_case=True)
+        simulate_hla_reads(num_to_generate=best_num_test_cases, num_reads=num_hla_reads_modified, reference_dir=reference_dir, hla_gen_path=hla_gen_path, error_rate=error_rate, best_case=True, loh_number=0)
+
         # simulate hla reads using random HLA alleles from TCGA data
-        simulate_hla_reads(num_per_test_case // 2, num_hla_reads, best_case=False)
+        simulate_hla_reads(num_to_generate=random_num_test_cases, num_reads=num_hla_reads_modified, reference_dir=reference_dir, hla_gen_path=hla_gen_path, error_rate=error_rate, best_case=False, loh_number=0)
+
         # simulate reads from the rest of the genome and concatenate them with the hla reads
-        simulate_masked_reads(num_per_test_case, num_human_reads)
+        simulate_masked_reads(masked_human_genome_path=masked_genome_path, reference_dir=reference_dir, num_to_generate=num_test_cases, num_reads=num_human_reads, error_rate=error_rate)
 
-def create_dummy_tests():
-    num_per_test_case = 12
-    num_hla_reads = 1500
 
+def create_dummy_tests(reference_dir, hla_gen_path, num_test_cases, num_hla_reads=1500, loh_number=0, error_rate=.01):
     current_path = os.environ.get("PATH", "")
     home_dir = os.path.expanduser("~")
     new_path = f"{current_path}:{home_dir}/.docker/bin"
     os.environ['PATH'] = new_path
 
-    for loh_number in range(3):
-        num_reads = (num_hla_reads // 6) * (6 - loh_number)
-        if loh_number > 0:
-            num_per_test = num_per_test_case // 2
-        else:
-            num_per_test = num_per_test_case
+    num_reads_modified = (num_hla_reads // 6) * (6 - loh_number)
 
-        # simulate hla reads using best case HLA alleles from TCGA data
-        simulate_hla_reads(num_per_test, num_reads, best_case=True, loh_number=loh_number)
-        # simulate hla reads using random HLA alleles from TCGA data
-        simulate_hla_reads(num_per_test, num_reads, best_case=False, loh_number=loh_number)
+    random_num_test_cases = num_test_cases // 2
+    best_num_test_cases = num_test_cases // 2
 
-create_dummy_tests()
+    if num_test_cases % 2 != 0:
+        best_num_test_cases += 1
+
+    # simulate hla reads using best case HLA alleles from TCGA data
+    simulate_hla_reads(num_to_generate=best_num_test_cases, num_reads=num_reads_modified, reference_dir=reference_dir, hla_gen_path=hla_gen_path, error_rate=error_rate, best_case=True, loh_number=0)
+
+    # simulate hla reads using random HLA alleles from TCGA data
+    simulate_hla_reads(num_to_generate=random_num_test_cases, num_reads=num_reads_modified, reference_dir=reference_dir, hla_gen_path=hla_gen_path, error_rate=error_rate, best_case=False, loh_number=0)
+
+
+def main(argv):
+    simParse = argp.ArgumentParser()
+    simParse.add_argument('--large', action='store_true', help='generate large tests', default=0)
+    simParse.add_argument('-n', '--num_test_cases', type=int, help='number of samples per test case', default=10)
+    simParse.add_argument('--num_hla_reads', type=int, help='number of HLA reads to generate', default=1500)
+    simParse.add_argument('-l', '--loh_number', type=int, help='number of alleles to lose heterozygosity', default=0)
+    simParse.add_argument('-m', '--masked_genome_path', type=str, help='path to the masked genome dir', default=0)
+    simParse.add_argument('-r', '--hla_fasta_path', type=str, help='path to the HLA fasta file', default='hla_gen.fasta')
+    simParse.add_argument('-e', '--error_rate', type=float, help='error rate for wgsim', default=.01)
+    args = simParse.parse_args()
+
+    if args.large and not args.masked_genome_path:
+        print('Please provide a path to the masked genome directory. Exiting.')
+        exit(1)
+
+    if not args.hla_fasta_path:
+        print('Please provide a path to the HLA fasta file. Exiting.')
+        exit(1)
+
+    # Path to the local directory open_docker.sh is in and that run_all_bash.sh writes to
+    PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    reference_dir = os.path.join(PARENT_DIR, 'reference')
+
+    # Recreate Genome.fa
+    recreate_genome_path = os.path.join(PARENT_DIR, 'src', 'recreate_genome.sh')
+    new_recreate_genome_path = os.path.join(args.masked_genome_path, 'recreate_genome.sh')
+    shutil.copyfile(recreate_genome_path, new_recreate_genome_path)
+    subprocess.run(["chmod", "700", new_recreate_genome_path])
+    result = subprocess.run([new_recreate_genome_path], check=True)
+    print("RecreateGenome finished with return code:", result.returncode)
+
+    masked_genome = os.path.join(args.masked_genome_path, 'Genome.fa')
+
+    try:
+        if not os.path.exists(reference_dir):
+            os.makedirs(reference_dir)
+            print(os.listdir(PARENT_DIR))
+            tsv_files = []
+            for file in os.listdir(PARENT_DIR):
+                if file.endswith(".tsv"):
+                    tsv_files.append(os.path.join(PARENT_DIR, file))
+
+            TCGA_file = tsv_files[0]
+            target_file = os.path.join(reference_dir, os.path.basename(TCGA_file))
+            shutil.copyfile(TCGA_file, target_file)
+    except:
+        print('Failed to create a reference directory with the TCGA file inside. Exiting.')
+        exit(1)
+
+    if args.large:
+        create_full_genome_samples(reference_dir=reference_dir, hla_gen_path=args.hla_fasta_path, masked_genome_path=masked_genome, num_test_cases=args.num_test_cases, total_num_reads=args.num_hla_reads, loh_number=args.loh_number, error_rate=args.error_rate)
+    else:
+        create_dummy_tests(reference_dir=reference_dir, hla_gen_path=args.hla_fasta_path, num_test_cases=args.num_test_cases, num_hla_reads=args.num_hla_reads, loh_number=args.loh_number, error_rate=args.error_rate)
+
+
+if __name__ == "__main__":
+    main(sys.argv)

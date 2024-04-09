@@ -132,7 +132,7 @@ ADD timestamp.txt /usr/local/bin/
 RUN git clone https://github.com/zacheliason/hla-em.git
 
 # Download hla_gen.fasta from IMGT
-RUN curl -LJO -o /usr/local/bin/hla-em/hla_gen.fasta https://raw.githubusercontent.com/ANHIG/IMGTHLA/master/hla_gen.fasta
+# RUN curl -LJO -o /usr/local/bin/hla-em/hla_gen.fasta https://raw.githubusercontent.com/ANHIG/IMGTHLA/master/hla_gen.fasta
 
 # Set the working directory to the cloned repository
 WORKDIR /usr/local/bin/hla-em

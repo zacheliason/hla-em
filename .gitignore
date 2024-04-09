@@ -2,6 +2,7 @@
 .idea/*
 
 .DS_Store
+timestamp.txt
 
 *.fa
 *.fasta
