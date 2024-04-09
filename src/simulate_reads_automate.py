@@ -1,15 +1,32 @@
 from random import sample
+import argparse as argp
 import pandas as pd
 import subprocess
 import random
 import shutil
-import argp
+import time
 import sys
 import os
 import re
 
+def clean_docker_containers():
+    command = ["docker", "ps", "-a"]
 
-def apply_loss_of_heterozygousity(alleles, num_lost_alleles):
+    # Run the command and capture the output
+    result = subprocess.run(command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
+
+    output_lines = result.stdout.split('\n')
+
+    # Find the container ID associated with the image pegi3s/wgsim:latest
+    for line in output_lines:
+        if "pegi3s/wgsim:latest" in line:
+            container_id = line.split()[0]  # Extract the first column (container ID)
+            remove_container_command = ["docker", "stop", container_id]
+            result = subprocess.run(remove_container_command, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            break
+
+
+def apply_loss_of_heterozygosity(alleles, num_lost_alleles):
     # Group the Series by the first character of the index
     allele_groups = alleles.groupby(alleles.index.str[0])
 
@@ -101,7 +118,7 @@ def simulate_hla_reads(num_to_generate, num_reads, reference_dir, hla_gen_path, 
             random_patient = df.sample().iloc[0]
 
             # Apply loss of heterozygosity
-            random_patient = apply_loss_of_heterozygousity(random_patient, loh_number)
+            random_patient = apply_loss_of_heterozygosity(random_patient, loh_number)
 
             hla_alleles = []
             for hla_gene, allele in random_patient.items():
@@ -159,24 +176,27 @@ def simulate_hla_reads(num_to_generate, num_reads, reference_dir, hla_gen_path, 
 
         full_allele_record_df.to_csv(allele_record_filepath, index=False)
 
-    subprocess.run(["chmod", "700", run_all_script])
+    subprocess.run(["chmod", "700", run_all_script], check=True)
 
     # Create a container for the docker image mounted to the reference directory
     # Inside this container, run the bash script that will simulate reads
     wgsim_command = ["docker", "run", "--rm", "-v", f"{reference_dir}:/scripts", "pegi3s/wgsim:latest", "/bin/bash", "-c", "bash ./scripts/run_all_bash.sh"]
-    result = subprocess.run(wgsim_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    time.sleep(.5)
+    result = subprocess.run(wgsim_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
 
     if result.returncode == 0:
+        clean_docker_containers()
+
         # clean up
         shutil.rmtree(bash_dir)
         os.remove(run_all_script)
     else:
         print(result.stdout)
         print(result.stderr)
-        exit(1)
+        sys.exit(1)
 
 
-def simulate_masked_reads(masked_human_genome_path, reference_dir, num_to_generate, num_reads, error_rate=.01):
+def simulate_masked_reads(masked_human_genome_path, reference_dir, parent_dir, num_to_generate, num_reads, error_rate=.01):
     run_all_script = os.path.join(reference_dir, "run_all_bash.sh")
 
     masked_human_genome_bash_text = """
@@ -184,11 +204,11 @@ def simulate_masked_reads(masked_human_genome_path, reference_dir, num_to_genera
     REFDIR=[REF_DIR]
     OUTDIR=[REF_DIR]/reference/samples/[TRIAL_NUM]
 
-    echo 'simulating data' && wgsim -e [ERROR_RATE] -r 0 -h  -N [NUM_READS] -1 151 -2 151 -d 500 [MASKED_GENOME_PATH] $OUTDIR/sim.masked.reads_01.fq $OUTDIR/sim.masked.reads_02.fq || exit 1;
+    echo 'simulating data' && wgsim -e [ERROR_RATE] -r 0 -h  -N [NUM_READS] -1 151 -2 151 -d 500 $REFDIR/[MASKED_GENOME_PATH] $OUTDIR/sim.masked.reads_01.fq $OUTDIR/sim.masked.reads_02.fq || exit 1;
     cat $OUTDIR/sim.masked.reads_01.fq >> $OUTDIR/sim.HLA.reads_01.fq
     cat $OUTDIR/sim.masked.reads_02.fq >> $OUTDIR/sim.HLA.reads_02.fq
-    # rm $OUTDIR/sim.masked.reads_01.fq
-    # rm $OUTDIR/sim.masked.reads_02.fq
+    rm $OUTDIR/sim.masked.reads_01.fq
+    rm $OUTDIR/sim.masked.reads_02.fq
     """
 
     if not os.path.exists(reference_dir):
@@ -224,24 +244,23 @@ def simulate_masked_reads(masked_human_genome_path, reference_dir, num_to_genera
             bash_path = os.path.join('scripts', 'reference', 'bash', f"sim_reads_{dir_name}.sh")
             run_all_bash_script.write(f"bash {bash_path}" + "\n")
 
-    subprocess.run(["chmod", "700", run_all_script])
+    subprocess.run(["chmod", "700", run_all_script], check=True)
 
     # Create a container for the docker image mounted to the reference directory
     # Inside this container, run the bash script that will simulate reads
-    wgsim_command = ["docker", "run", "--rm", "-v", f"{os.getcwd()}:/scripts", "pegi3s/wgsim:latest", "/bin/bash", "-c", "bash ./scripts/reference/run_all_bash.sh"]
-    result = subprocess.run(wgsim_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    wgsim_command = ["docker", "run", "--rm", "-v", f"{parent_dir}:/scripts", "pegi3s/wgsim:latest", "/bin/bash", "-c", "bash ./scripts/reference/run_all_bash.sh"]
+    time.sleep(.5)
+    result = subprocess.run(wgsim_command, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True)
 
     if result.returncode == 0:
+        clean_docker_containers()
+
         # clean up
         for samples_dir in sample_dirs:
             if os.path.exists(os.path.join(samples_dir, 'sim.masked.reads_01.fq')):
                 os.remove(os.path.join(samples_dir, 'sim.masked.reads_01.fq'))
-            else:
-                print(os.path.join(samples_dir, 'sim.masked.reads_01.fq'), " doesn't exist")
             if os.path.exists(os.path.join(samples_dir, 'sim.masked.reads_02.fq')):
                 os.remove(os.path.join(samples_dir, 'sim.masked.reads_02.fq'))
-            else:
-                print(os.path.join(samples_dir, 'sim.masked.reads_01.fq'), " doesn't exist")
         shutil.rmtree(bash_dir)
         os.remove(run_all_script)
     else:
@@ -250,7 +269,9 @@ def simulate_masked_reads(masked_human_genome_path, reference_dir, num_to_genera
         exit(1)
 
 
-def create_full_genome_samples(reference_dir, hla_gen_path, masked_genome_path, num_test_cases=5, total_num_reads=1000000, loh_number=0, error_rate=.01):
+def create_full_genome_samples(reference_dir, hla_gen_path, masked_genome_path, parent_dir, num_test_cases=5, total_num_reads=1000000, loh_number=0, error_rate=.01):
+    print('Creating full genome samples')
+
     test_cases = [100000, 50000, 10000, 5000, 1500]
 
     for num_hla_reads in test_cases:
@@ -270,10 +291,12 @@ def create_full_genome_samples(reference_dir, hla_gen_path, masked_genome_path, 
         simulate_hla_reads(num_to_generate=random_num_test_cases, num_reads=num_hla_reads_modified, reference_dir=reference_dir, hla_gen_path=hla_gen_path, error_rate=error_rate, best_case=False, loh_number=0)
 
         # simulate reads from the rest of the genome and concatenate them with the hla reads
-        simulate_masked_reads(masked_human_genome_path=masked_genome_path, reference_dir=reference_dir, num_to_generate=num_test_cases, num_reads=num_human_reads, error_rate=error_rate)
+        simulate_masked_reads(masked_human_genome_path=masked_genome_path, reference_dir=reference_dir, parent_dir=parent_dir, num_to_generate=num_test_cases, num_reads=num_human_reads, error_rate=error_rate)
 
 
 def create_dummy_tests(reference_dir, hla_gen_path, num_test_cases, num_hla_reads=1500, loh_number=0, error_rate=.01):
+    print('Creating small hla samples')
+
     current_path = os.environ.get("PATH", "")
     home_dir = os.path.expanduser("~")
     new_path = f"{current_path}:{home_dir}/.docker/bin"
@@ -295,13 +318,15 @@ def create_dummy_tests(reference_dir, hla_gen_path, num_test_cases, num_hla_read
 
 
 def main(argv):
+    os.environ['PATH'] = f"{os.environ.get('PATH')}:{os.path.expanduser('~')}/.docker/bin"
+
     simParse = argp.ArgumentParser()
-    simParse.add_argument('--large', action='store_true', help='generate large tests', default=0)
-    simParse.add_argument('-n', '--num_test_cases', type=int, help='number of samples per test case', default=10)
+    simParse.add_argument('--large', action='store_true', help='generate large tests', default=True)
+    simParse.add_argument('-n', '--num_test_cases', type=int, help='number of samples per test case', default=5)
     simParse.add_argument('--num_hla_reads', type=int, help='number of HLA reads to generate', default=1500)
     simParse.add_argument('-l', '--loh_number', type=int, help='number of alleles to lose heterozygosity', default=0)
     simParse.add_argument('-m', '--masked_genome_path', type=str, help='path to the masked genome dir', default=0)
-    simParse.add_argument('-r', '--hla_fasta_path', type=str, help='path to the HLA fasta file', default='hla_gen.fasta')
+    simParse.add_argument('-r', '--hla_fasta_path', type=str, help='path to the HLA fasta file', default=0)
     simParse.add_argument('-e', '--error_rate', type=float, help='error rate for wgsim', default=.01)
     args = simParse.parse_args()
 
@@ -314,23 +339,28 @@ def main(argv):
         exit(1)
 
     # Path to the local directory open_docker.sh is in and that run_all_bash.sh writes to
-    PARENT_DIR = os.path.dirname(os.path.abspath(__file__))
+    PARENT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     reference_dir = os.path.join(PARENT_DIR, 'reference')
 
     # Recreate Genome.fa
-    recreate_genome_path = os.path.join(PARENT_DIR, 'src', 'recreate_genome.sh')
-    new_recreate_genome_path = os.path.join(args.masked_genome_path, 'recreate_genome.sh')
-    shutil.copyfile(recreate_genome_path, new_recreate_genome_path)
-    subprocess.run(["chmod", "700", new_recreate_genome_path])
-    result = subprocess.run([new_recreate_genome_path], check=True)
-    print("RecreateGenome finished with return code:", result.returncode)
+    if args.large:
 
-    masked_genome = os.path.join(args.masked_genome_path, 'Genome.fa')
+        if args.num_hla_reads < 100000:
+            args.num_hla_reads = 1000000
+
+        if not os.path.exists(os.path.join(args.masked_genome_path, 'Genome.fa')):
+            recreate_genome_path = os.path.join(PARENT_DIR, 'src', 'recreate_genome.sh')
+            subprocess.run(["chmod", "777", recreate_genome_path], check=True)
+            print("Recreating Genome.fa from masked genome directory...")
+            result = subprocess.run(['bash', recreate_genome_path], check=True, cwd=args.masked_genome_path)
+            print("RecreateGenome finished with return code:", result.returncode)
+
+        masked_genome = os.path.join(args.masked_genome_path, 'Genome.fa')
+        masked_genome = masked_genome.replace(PARENT_DIR, "")
 
     try:
         if not os.path.exists(reference_dir):
             os.makedirs(reference_dir)
-            print(os.listdir(PARENT_DIR))
             tsv_files = []
             for file in os.listdir(PARENT_DIR):
                 if file.endswith(".tsv"):
@@ -344,7 +374,7 @@ def main(argv):
         exit(1)
 
     if args.large:
-        create_full_genome_samples(reference_dir=reference_dir, hla_gen_path=args.hla_fasta_path, masked_genome_path=masked_genome, num_test_cases=args.num_test_cases, total_num_reads=args.num_hla_reads, loh_number=args.loh_number, error_rate=args.error_rate)
+        create_full_genome_samples(reference_dir=reference_dir, hla_gen_path=args.hla_fasta_path, masked_genome_path=masked_genome, parent_dir=PARENT_DIR, num_test_cases=args.num_test_cases, total_num_reads=args.num_hla_reads, loh_number=args.loh_number, error_rate=args.error_rate)
     else:
         create_dummy_tests(reference_dir=reference_dir, hla_gen_path=args.hla_fasta_path, num_test_cases=args.num_test_cases, num_hla_reads=args.num_hla_reads, loh_number=args.loh_number, error_rate=args.error_rate)
 
