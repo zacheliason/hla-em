@@ -73,7 +73,7 @@ def cmd(args, write=False, filepath=None, verbose=True):
 
 def filterReferenceFasta(genomeFastaFiles):
     print(f"Filtering reference genome")
-    
+
     directory, filename = os.path.split(genomeFastaFiles)
     base_name, extension = os.path.splitext(filename)
     if extension.lower() in ('.fa', '.fasta'):

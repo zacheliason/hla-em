@@ -81,6 +81,8 @@ I wrote the bash script `run_hla_em_pipeline.sh` to automate the process of runn
 
 The script loops through each of the samples in the `reference` directory and runs HLA-EM on each one. (the number of samples will have to be adjusted based on the number of test cases generated)
 
+The script `HLA_EM.py` will index a filtered reference genome so there is no need to supply a STAR index folder beforehand.
+
 ### Usage
 
 To run the script, you can use the following command-line arguments:

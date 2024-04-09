@@ -321,7 +321,7 @@ def main(argv):
     os.environ['PATH'] = f"{os.environ.get('PATH')}:{os.path.expanduser('~')}/.docker/bin"
 
     simParse = argp.ArgumentParser()
-    simParse.add_argument('--large', action='store_true', help='generate large tests', default=True)
+    simParse.add_argument('--dummy', action='store_true', help='generate large tests', default=False)
     simParse.add_argument('-n', '--num_test_cases', type=int, help='number of samples per test case', default=5)
     simParse.add_argument('--num_hla_reads', type=int, help='number of HLA reads to generate', default=1500)
     simParse.add_argument('-l', '--loh_number', type=int, help='number of alleles to lose heterozygosity', default=0)
@@ -330,7 +330,7 @@ def main(argv):
     simParse.add_argument('-e', '--error_rate', type=float, help='error rate for wgsim', default=.01)
     args = simParse.parse_args()
 
-    if args.large and not args.masked_genome_path:
+    if not args.dummy and not args.masked_genome_path:
         print('Please provide a path to the masked genome directory. Exiting.')
         exit(1)
 
@@ -343,8 +343,7 @@ def main(argv):
     reference_dir = os.path.join(PARENT_DIR, 'reference')
 
     # Recreate Genome.fa
-    if args.large:
-
+    if not args.dummy:
         if args.num_hla_reads < 100000:
             args.num_hla_reads = 1000000
 
@@ -373,10 +372,12 @@ def main(argv):
         print('Failed to create a reference directory with the TCGA file inside. Exiting.')
         exit(1)
 
-    if args.large:
-        create_full_genome_samples(reference_dir=reference_dir, hla_gen_path=args.hla_fasta_path, masked_genome_path=masked_genome, parent_dir=PARENT_DIR, num_test_cases=args.num_test_cases, total_num_reads=args.num_hla_reads, loh_number=args.loh_number, error_rate=args.error_rate)
+    if args.dummy:
+        create_dummy_tests(reference_dir=reference_dir, hla_gen_path=args.hla_fasta_path,
+                           num_test_cases=args.num_test_cases, num_hla_reads=args.num_hla_reads,
+                           loh_number=args.loh_number, error_rate=args.error_rate)
     else:
-        create_dummy_tests(reference_dir=reference_dir, hla_gen_path=args.hla_fasta_path, num_test_cases=args.num_test_cases, num_hla_reads=args.num_hla_reads, loh_number=args.loh_number, error_rate=args.error_rate)
+        create_full_genome_samples(reference_dir=reference_dir, hla_gen_path=args.hla_fasta_path, masked_genome_path=masked_genome, parent_dir=PARENT_DIR, num_test_cases=args.num_test_cases, total_num_reads=args.num_hla_reads, loh_number=args.loh_number, error_rate=args.error_rate)
 
 
 if __name__ == "__main__":
