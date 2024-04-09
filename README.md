@@ -1,5 +1,33 @@
 # Instructions for Matt
 
+## 0. Setup
+
+First clone the repository:
+
+```
+git clone git@github.com:zacheliason/hla-em.git
+```
+
+Next move your copies of `hla_gen.fasta` ([link to current IMGT version](https://github.com/ANHIG/IMGTHLA/blob/Latest/hla_gen.fasta)) and `EnsembleGenome_STAR_without_scaffolds` inside the root directory of the repository as shown here:
+
+
+```
+hla-em/
+├── src/
+│   ├── EMStep.py
+│   └── ...
+├── HLA_EM.py
+├── README.md
+├── ...
+├── ...
+├── hla_gen.fasta
+└── EnsembleGenome_STAR_without_scaffolds/
+    ├── Genome
+    └── ...
+```
+
+They have to be inside the `hla-em` directory because they will need to be accessible from inside our mounted volume inside the Docker container later.
+
 ## 1. Simulated Test Case Generation
 
 This Python script is used to generate simulation test cases for `HLA-EM.py`
