@@ -72,6 +72,8 @@ def cmd(args, write=False, filepath=None, verbose=True):
 
 
 def filterReferenceFasta(genomeFastaFiles):
+    print(f"Filtering reference genome")
+    
     directory, filename = os.path.split(genomeFastaFiles)
     base_name, extension = os.path.splitext(filename)
     if extension.lower() in ('.fa', '.fasta'):
@@ -162,6 +164,7 @@ def main(args=None):
     base_outname = os.path.basename(args.outname)
     outname = os.path.join(args.outname, base_outname)
 
+    args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
     if not os.path.exists(args.starHLA):
         indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 

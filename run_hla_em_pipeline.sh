@@ -18,9 +18,10 @@ for trial in {0..24}; do
     echo ""
     echo "now working on ${TRIAL_DIR}"
 
+    # Disable dust for now, I haven't returned dust filtering to the pipeline yet
     docker run -it --rm -v "$HOST_PATH":"$VOLUME_PATH" zeliason/hla-em:latest \
         -t 4 \
-        -d \  # Disable dust for now, I haven't returned dust filtering to the pipeline yet
+        -d \
         --suppress_figs \
         -o "${OUTPUT_DIR}" \
         -s "${VOLUME_PATH}/EnsembleGenome_STAR_without_scaffolds" \
