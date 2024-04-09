@@ -44,7 +44,7 @@ def add_labels(filepath, training_path):
 
 
 def tree_to_code(tree, feature_names):
-    index_to_class = {i: class_name for i, class_name in enumerate(tree.classes_)}
+    index_to_class = {i: f'"{class_name}"' for i, class_name in enumerate(tree.classes_)}
     tree_ = tree.tree_
     feature_name = [
         feature_names[i] if i != _tree.TREE_UNDEFINED else "undefined!"
@@ -89,7 +89,8 @@ def train_tree_model(training_data_path):
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
-    clf = DecisionTreeClassifier(max_depth=3)
+    clf = DecisionTreeClassifier(max_depth=4)
+    # clf = DecisionTreeClassifier()
     # clf.fit(X_train, y_train)
     clf.fit(X, y)
 
@@ -101,9 +102,10 @@ def train_tree_model(training_data_path):
     return python_tree_code
 
 # training_path = '/Users/zacheliason/Downloads/hla-em/output_training/training.tsv'
-training_path = '/Users/zacheliason/Downloads/hla-em/output_paired/training.tsv'
+# training_path = '/Users/zacheliason/Downloads/hla-em/output_paired/training.tsv'
+training_path = '/Users/zacheliason/Downloads/hla-em/output_training/training.tsv'
 
-add_labels('/Users/zacheliason/Downloads/hla-em/reference_paired/allele_record.csv', training_path)
+# add_labels('/Users/zacheliason/Downloads/hla-em/reference_paired/allele_record.csv', training_path)
 python_code = train_tree_model(training_path)
 print(python_code)
 print()

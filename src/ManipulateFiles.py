@@ -196,7 +196,7 @@ def group_by_protein(df):
 	return grouped[['HLAtype', 'hla_type', 'hla_code', 'hla_letter', 'MappedReads', 'MappedProportion', 'MLE_Reads', 'MLE_Probability']]
 
 
-def replace_smaller_allele(df, trial_name=None, training_path=""):
+def replace_smaller_allele(df, trial_name=None, training_path="", allow_loh=True):
 	# Group the alleles by their "hla_letter" values
 	allele_groups = df.groupby("hla_letter")
 
@@ -219,18 +219,17 @@ def replace_smaller_allele(df, trial_name=None, training_path=""):
 			action = predict_allele_action(ml1, ml2, ratio)
 
 			if action == "DROP":
-				df = df.drop(allele2.name)
-			elif action == "COPY":
+				if allow_loh:
+					df = df.drop(allele2.name)
+					continue
+				else:
+					action = "COPY"
+
+			if action == "COPY":
 				allele1[['MLE_Probability', 'MappedProportion']] /= 2
 				allele1[['MLE_Reads', 'MappedReads']] //= 2
 
 				columns_to_update = ['MLE_Probability', 'MappedProportion', 'MLE_Reads', 'MappedReads']
-				# print()
-				# print(allele1.index)
-				# print(allele1.name)
-				# print(df.columns)
-				# print(df.index)
-				# print()
 				df.loc[allele1.name, columns_to_update] = allele1[columns_to_update]
 
 				df.loc[allele2.name] = allele1
@@ -239,6 +238,9 @@ def replace_smaller_allele(df, trial_name=None, training_path=""):
 
 
 def predict_genotype_from_MLE(em_results_path, outname, trial_name, training_spreadsheet, group_by_p=True):
+	if "10" in trial_name:
+		print()
+
 	if training_spreadsheet != "":
 		if not os.path.exists(training_spreadsheet):
 			with open(training_spreadsheet, 'w+') as f:
@@ -643,7 +645,21 @@ def score_optitype_output(output_dir, alleles_path):
 
 	return results
 
-
+def predict_allele_action(mle1, mle2, ratio):
+	if mle2 <= 0.0345:
+		if mle1 <= 0.17:
+			return "DROP"
+		else:  # if mle1 > 0.188
+			return "COPY"
+	else:  # if mle2 > 0.0345
+		if mle2 <= 0.0519:
+			if ratio <= 3:
+				return "KEEP"
+			else:  # if mle2 > 0.0492
+				return "COPY"
+		else:  # if mle2 > 0.0519
+			return "KEEP"
+#
 #
 # def predict_allele_action(mle1, mle2, ratio):
 # 	if mle2 <= 0.0345:
@@ -660,21 +676,29 @@ def score_optitype_output(output_dir, alleles_path):
 # 		else:  # if mle2 > 0.0519
 # 			return "KEEP"
 
-
-def predict_allele_action(mle1, mle2, ratio):
-	if mle2 <= 0.0345:
-		if mle1 <= 0.188:
-			return "DROP"
-		else:  # if mle1 > 0.188
-			return "COPY"
-	else:  # if mle2 > 0.0345
-		if mle2 <= 0.0519:
-			if ratio <= 3:
-				return "KEEP"
-			else:  # if mle2 > 0.0492
-				return "COPY"
-		else:  # if mle2 > 0.0519
-			return "KEEP"
+# Overfit ... I thought?
+# COPY THIS CODE INTO YOUR SCRIPT
+# Choose whether to keep, drop, or copy the smaller allele from the larger based on the pair's relative MLE probabilities
+# def predict_allele_action(mle1, mle2, ratio):
+# 	if mle2 <= 0.0299:
+# 		if mle1 <= 0.1891:
+# 			if mle2 <= 0.0073:
+# 				return "DROP"
+# 			else:  # if mle2 > 0.0073
+# 				if ratio <= 15.25:
+# 					return "DROP"
+# 				else:  # if ratio > 15.25
+# 					return "KEEP"
+# 		else:  # if mle1 > 0.1891
+# 			if mle2 <= 0.0065:
+# 				if mle2 <= 0.0054:
+# 					return "KEEP"
+# 				else:  # if mle2 > 0.0054
+# 					return "COPY"
+# 			else:  # if mle2 > 0.0065
+# 				return "KEEP"
+# 	else:  # if mle2 > 0.0299
+# 		return "KEEP"
 
 
 def score_output(output_dir, alleles_path):
@@ -705,7 +729,11 @@ def score_output(output_dir, alleles_path):
 
 		# Retrieve predicted HLA alleles
 		try:
-			final_predictions_path = [os.path.join(trial_dir, x) for x in trial_results if x.endswith("final_predictions.csv")][0]
+			final_predictions = [os.path.join(trial_dir, x) for x in trial_results if x.endswith("final_predictions.csv")]
+			# sort by length
+			final_predictions = sorted(final_predictions, key=len)
+			# choose the longest
+			final_predictions_path = final_predictions[-1]
 		except:
 			print(f"Could not find final_predictions.csv for {trial_num}")
 			continue
@@ -731,14 +759,43 @@ def score_output(output_dir, alleles_path):
 
 	return results
 
-
-# optitype_paired_scores = score_optitype_output("/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/optitype_paired_output", "/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/reference/allele_record.csv")
-# hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
-# hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em-sat/reference/allele_record.csv")
 #
+# # optitype_paired_scores = score_optitype_output("/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/optitype_paired_output", "/Users/zacheliason/Downloads/wetransfer_hla-thirsday_2024-03-28_2324/hla-em/reference/allele_record.csv")
+# # hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
+# hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired2", "/Users/zacheliason/Downloads/hla-em/reference_paired/allele_record.csv")
 # print(hla_em_paired_scores['two_digit_score'].mean())
 # print(hla_em_paired_scores['four_digit_score'].mean())
 # print(hla_em_paired_scores['six_digit_score'].mean())
 # print(hla_em_paired_scores['eight_digit_score'].mean())
+# print()
+#
+# optitype_single_scores = score_optitype_output("/Users/zacheliason/Downloads/hla-em/optitype_output_single", "/Users/zacheliason/Downloads/hla-em/reference_training/allele_record.csv")
+# # optitype_paired_scores = score_optitype_output("/Users/zacheliason/Downloads/hla-em/optitype_output_paired", "/Users/zacheliason/Downloads/hla-em/reference_training/allele_record.csv")
+#
+# # filter df by trials below 24
+# hla_em_paired_scores['Trial_Num'] = hla_em_paired_scores['Trial'].str.extract(r"trial_(\d+)").astype(int)
+# hla_em_paired_scores = hla_em_paired_scores[hla_em_paired_scores['Trial_Num'] < 20]
+# print(hla_em_paired_scores['two_digit_score'].mean())
+# print(hla_em_paired_scores['four_digit_score'].mean())
+# print(hla_em_paired_scores['six_digit_score'].mean())
+# print(hla_em_paired_scores['eight_digit_score'].mean())
+# print()
+#
+# print(optitype_single_scores['two_digit_score'].mean())
+# print(optitype_single_scores['four_digit_score'].mean())
+# print(optitype_single_scores['six_digit_score'].mean())
+# print(optitype_single_scores['eight_digit_score'].mean())
+# print()
+#
+# print(optitype_paired_scores['two_digit_score'].mean())
+# print(optitype_paired_scores['four_digit_score'].mean())
+# print(optitype_paired_scores['six_digit_score'].mean())
+# print(optitype_paired_scores['eight_digit_score'].mean())
+#
+# hla_em_paired_scores.to_csv("/Users/zacheliason/Downloads/hla-em/output_training/scores_bespoke.csv", index=False)
+#
+#
+#
+#
 #
 # print()

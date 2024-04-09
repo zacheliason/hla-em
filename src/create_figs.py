@@ -43,7 +43,7 @@ def compare_within_tool(df, title):
 
 
 def compare_tools(opti_paired_scores, opti_single_scores, hla_em_single_scores, hla_em_paired_scores):
-    for metric in ['two_digit_score', 'four_digit_score']:
+   for metric in ['two_digit_score', 'four_digit_score']:
         type = " ".join(metric.split("_")[:-1]).title()
         mean_scores = {
             'Optitype Paired': opti_paired_scores[metric].mean(),
@@ -82,10 +82,21 @@ def compare_tools(opti_paired_scores, opti_single_scores, hla_em_single_scores, 
         plt.savefig(figpath, dpi=600)
 
 
-opti_paired_scores = score_optitype_output("/Users/zacheliason/Downloads/hla-em/optitype_paired_output", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
-opti_single_scores = score_optitype_output("/Users/zacheliason/Downloads/hla-em/optitype_single_output", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
-hla_em_single_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_single", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
-hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired", "/Users/zacheliason/Downloads/hla-em/reference/allele_record.csv")
+opti_paired_scores = score_optitype_output("/Users/zacheliason/Downloads/hla-em/optitype_output_paired", "/Users/zacheliason/Downloads/hla-em/reference_paired/allele_record.csv")
+opti_single_scores = score_optitype_output("/Users/zacheliason/Downloads/hla-em/optitype_output_single", "/Users/zacheliason/Downloads/hla-em/reference_paired/allele_record.csv")
+hla_em_single_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_single", "/Users/zacheliason/Downloads/hla-em/reference_paired/allele_record.csv")
+hla_em_paired_scores = score_output("/Users/zacheliason/Downloads/hla-em/output_paired2", "/Users/zacheliason/Downloads/hla-em/reference_paired/allele_record.csv")
+
+# extract num from trial
+opti_paired_scores['trial'] = opti_paired_scores['Trial'].str.extract(r'(\d+)').astype(int)
+opti_single_scores['trial'] = opti_single_scores['Trial'].str.extract(r'(\d+)').astype(int)
+hla_em_single_scores['trial'] = hla_em_single_scores['Trial'].str.extract(r'(\d+)').astype(int)
+hla_em_paired_scores['trial'] = hla_em_paired_scores['Trial'].str.extract(r'(\d+)').astype(int)
+
+opti_paired_scores = opti_paired_scores[opti_paired_scores['trial'] < 20]
+opti_single_scores = opti_single_scores[opti_single_scores['trial'] < 20]
+hla_em_single_scores = hla_em_single_scores[hla_em_single_scores['trial'] < 20]
+hla_em_paired_scores = hla_em_paired_scores[hla_em_paired_scores['trial'] < 20]
 
 compare_tools(opti_paired_scores, opti_single_scores, hla_em_single_scores, hla_em_paired_scores)
 

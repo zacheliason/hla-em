@@ -26,6 +26,21 @@ def prereqs():
     return ready
 
 
+def clean_directories(list_of_directories):
+    allowed_extensions = {'.bam', '.tsv', '.pdf', '.csv', '.fastq', '.fq', '.json'}
+
+    # Clean unneeded intermediary output and files
+    for dir_to_clean in list_of_directories:
+        for filename in os.listdir(dir_to_clean):
+            filepath = os.path.join(dir_to_clean, filename)
+            if os.path.isdir(filepath):
+                shutil.rmtree(filepath)
+            if os.path.isfile(filepath):
+                _, extension = os.path.splitext(filename)
+                if extension.lower() not in allowed_extensions and "Log.final.out" not in filename:
+                    os.remove(os.path.join(dir_to_clean, filename))
+
+
 def cmd(args, write=False, filepath=None, verbose=True):
     if(write==True):
         temp = sys.stdout
@@ -99,19 +114,6 @@ def get_read_counts_from_log(filepath):
 
 
 def main(args=None):
-    # TODO remove
-    # os.environ['PATH'] = f"/Users/zeliason/Desktop/homebrew/bin:{os.environ.get('PATH')}"
-    print('cwd')
-    print(os.getcwd())
-    print(os.listdir(os.getcwd()))
-    print()
-
-    print('install dir')
-    installDir = os.path.dirname(os.path.abspath(__file__))
-    print(installDir)
-    print(os.listdir(installDir))
-    print()
-
     if args is None:
         installDir = os.path.dirname(os.path.abspath(__file__))
 
@@ -124,7 +126,7 @@ def main(args=None):
         # options
         myparse.add_argument('-t','--threads', type=int,  help="number of threads to use [1]", default=1)
         myparse.add_argument('-g','--genomeSAindexNbases', type=int,  help="number of bases to use [6]", default=6)
-        myparse.add_argument('-r','--reference', help="HLA reference genome in FASTA format,\nto be used in place of default HLA reference", default='hla_gen.fasta')
+        myparse.add_argument('-r','--reference', help="HLA reference genome in FASTA format,\nto be used in place of default HLA reference", default=0)
         myparse.add_argument('-a','--annotation', help="HLA gene annotations in TSV format,\nto be used in place of default HLA annotations\n[{}]".format('$HLA-EMPath/reference/hla_gene_annot.tsv'), default=installDir+'/reference/hla_gene_annot.tsv')
         myparse.add_argument('--starHLA', help="path to a directory containing STAR-generated\nHLA genome indexes based on the above FASTA", default=0)
         myparse.add_argument('-o', '--outname', type=str, help="output file name prefix [./hlaEM]", default='./hlaEM')
@@ -154,16 +156,12 @@ def main(args=None):
     # TODO remove shortcut
     if args.shortcut and os.path.exists(os.path.join(args.outname, 'final_predictions.csv')):
         pass
-        # exit(0)
 
     if not os.path.isdir(args.outname):
         os.makedirs(args.outname)
     base_outname = os.path.basename(args.outname)
     outname = os.path.join(args.outname, base_outname)
 
-    print(args.reference)
-    args.starHLA, args.reference = filterReferenceFasta(genomeFastaFiles=args.reference)
-    print(args.reference, args.starHLA)
     if not os.path.exists(args.starHLA):
         indexReferenceGenes(genomeDir=args.starHLA, genomeFastaFiles=args.reference, genomeSAindexNbases=args.genomeSAindexNbases, outname=args.outname)
 
@@ -175,7 +173,7 @@ def main(args=None):
 
     allReadsNum = -1
     hlaBams = []
-    argsHumanAlignSTAR = ["STAR", 
+    argsHumanAlignSTAR = ["STAR",
              "--genomeDir {path}".format(path=args.stargenome),
              "--runThreadN {}".format(args.threads),
              "--chimSegmentMin 18",
@@ -260,35 +258,16 @@ def main(args=None):
 
     # Clean unneeded intermediary output and files
     if not args.keepint:
-        allowed_extensions = {'.bam', '.tsv', '.pdf', '.csv', '.fastq', '.fq', '.json'}
-
-        # Clean both samples and output folders
         directories_to_clean = [os.path.split(reads_dir)[0], args.outname]
-        for dir_to_clean in directories_to_clean:
-            for filename in os.listdir(dir_to_clean):
-                filepath = os.path.join(dir_to_clean, filename)
-                if os.path.isdir(filepath):
-                    shutil.rmtree(filepath)
-                if os.path.isfile(filepath):
-                    _, extension = os.path.splitext(filename)
-                    if extension.lower() not in allowed_extensions and "Log.final.out" not in filename:
-                        os.remove(os.path.join(dir_to_clean, filename))
+        clean_directories(directories_to_clean)
 
     if not args.shortcut or not (os.path.exists('{}.mappedReads.tsv'.format(outname))):
         print("Creating read table", flush=True)
-        time_start = time.time()
         readsTable = mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not(args.disabledust), outputName=outname, annot=args.annotation, suppressOutputAndFigures=args.suppress_figs)
-        time_end = time.time()
 
-        print(f"CreateMappedReads took {time_end - time_start} seconds")
-
-    if True: #not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
+    if not args.shortcut or not (os.path.exists('{}.results.tsv'.format(outname))):
         print("Running EM algorithm", flush=True)
-
-        time_start = time.time()
         EmAlgo(readsTable, outname=outname, thresholdTpm=args.tpm)
-        time_end = time.time()
-        print(f"EM algorithm took {time_end - time_start} seconds")
 
     predictions = predict_genotype_from_MLE(outname + ".results.tsv", outname, base_outname, training_spreadsheet=args.training)
     predicted_types = predictions.index.values.tolist()
@@ -307,8 +286,7 @@ def main(args=None):
             print(traceback.format_exc())
             pass
 
-    # TODO restore
-    # sys.exit(0)
+    sys.exit(0)
 
 
 if __name__ == '__main__':

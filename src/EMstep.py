@@ -21,7 +21,7 @@ def parse_read_info(line_data):
     lm = read_info[:, 1].astype(np.float32)
     le = read_info[:, 2].astype(np.float32)
     # genes = read_info[:, 3] #line_data[1:][::4][read_nums == 0]
-    return read_nums, lm, le # genes
+    return read_nums, lm, le  # genes
 
 def read_table(readsTable):
     arrays_list = [np.array(line.split('\t')) for line in readsTable[2:]]

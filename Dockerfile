@@ -126,6 +126,8 @@ WORKDIR $WD
 
 FROM main AS final
 
+ADD timestamp.txt /usr/local/bin/
+
 # Clone the repository
 RUN git clone https://github.com/zacheliason/hla-em.git
 
@@ -135,7 +137,7 @@ RUN curl -LJO -o /usr/local/bin/hla-em/hla_gen.fasta https://raw.githubuserconte
 # Set the working directory to the cloned repository
 WORKDIR /usr/local/bin/hla-em
 
-RUN curl -LJO https://raw.githubusercontent.com/ANHIG/IMGTHLA/master/hla_gen.fasta
+# RUN curl -LJO https://raw.githubusercontent.com/ANHIG/IMGTHLA/master/hla_gen.fasta
 
 # Modify the Python script in-place
 RUN sed -i -e '1i#!/usr/bin/env python3\n' HLA_EM.py

@@ -11,7 +11,7 @@ VOLUME_PATH = ("/Users/zacheliason/Downloads/hla-em")  # Adjust this if needed
 # Define the range of trials (0 to 31)
 # trials = range(9, 10)
 # trials = range(0, 2)
-trials = range(25, 32)
+trials = range(0, 32)
 
 # Function to simulate argparse and create namespace
 def create_namespace():
@@ -61,7 +61,7 @@ def create_namespace():
 for trial in trials:
     print(f"now working on {trial}")
     TRIAL_DIR = os.path.join(VOLUME_PATH, f"reference_paired/samples/trial_{trial}")
-    OUT_DIR = os.path.join(VOLUME_PATH, f"output_paired")
+    OUT_DIR = os.path.join(VOLUME_PATH, f"output_paired2")
     OUTPUT_DIR = os.path.join(OUT_DIR, f"trial_{trial}")
 
     try:

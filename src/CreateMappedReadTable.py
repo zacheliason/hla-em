@@ -15,7 +15,6 @@ import sys
 import re
 
 
-
 # Calculate score to identify low-complexity reads using DUST algorithm
 # (S>2 should be filtered)
 def dust(read):
@@ -185,8 +184,6 @@ def create_hla_read_matrix(readNames_to_aligns):
     return match_length_matrix, error_length_matrix, ambig_array, ref_ids, read_names, ref_id_to_index, read_name_to_index
 
 
-
-
 # Convert read alignment information into matrixes and arrays
 def fast_create_hla_read_matrix(readNames_to_aligns):
     read_names = list(sorted(readNames_to_aligns.keys()))
@@ -240,7 +237,6 @@ def fast_create_hla_read_matrix(readNames_to_aligns):
 
 
 # Only keep alignments with the maximum match length for each reference
-
 def mask_non_max_values(lm_matrix_sparse, ambig_array):
     # Convert ambig_array_sparse to a column vector
 
@@ -265,6 +261,8 @@ def mask_non_max_values(lm_matrix_sparse, ambig_array):
     masked_matrix = sp.csr_matrix(lm_matrix_sparse.multiply(mask_sparse))
 
     return masked_matrix
+
+
 # def mask_non_max_values(lm_matrix, ambig_array):
 #     match_length_matrix = lm_matrix.copy()
 #
@@ -298,6 +296,8 @@ def createTotalMappedReadsMat(masked_matrix_sparse, ref_ids, hlaRefID_to_totalMa
         matrix_sparse[i, :] = row_vector.multiply(row_mask)
 
     return matrix_sparse
+
+
 # def createTotalMappedReadsMat(masked_matrix, ref_ids, hlaRefID_to_totalMappedReads):
 #     matrix = masked_matrix.copy()
 #     for i, ref_id in enumerate(ref_ids):
@@ -628,23 +628,23 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
 
 
 def main(argv):
-    # mapParse = argp.ArgumentParser()
-    # mapParse.add_argument('bam1')
-    # mapParse.add_argument('bam2', nargs='?', help='(optional)', default='not supplied')
-    # mapParse.add_argument('-r', '--reference', default=0)
-    # mapParse.add_argument('-o', '--outname', type=str, default='./hlaType')
-    # mapParse.add_argument('-d', '--disabledust', action='store_true')
-    # mapParse.add_argument('-y', '--ylimit', type=int, help='fix a maximum y-value for all coverage map axes', default=0)
-    # args = mapParse.parse_args()
-    #
-    # hlaBams = [args.bam1]
-    # if args.bam2 != "not supplied":
-    #     hlaBams += [args.bam2]
+    mapParse = argp.ArgumentParser()
+    mapParse.add_argument('bam1')
+    mapParse.add_argument('bam2', nargs='?', help='(optional)', default='not supplied')
+    mapParse.add_argument('-r', '--reference', default=0)
+    mapParse.add_argument('-o', '--outname', type=str, default='./hlaType')
+    mapParse.add_argument('-d', '--disabledust', action='store_true')
+    mapParse.add_argument('-y', '--ylimit', type=int, help='fix a maximum y-value for all coverage map axes', default=0)
+    args = mapParse.parse_args()
 
-    hlaBams = ['/Users/zacheliason/Downloads/hla-em/output_paired/trial_0/trial_0.1.Aligned.out.bam']
-    ref = '/Users/zacheliason/Downloads/hla-em/hla_gen_ABC.fasta'
-    mapReads(hlaBams, hlaRefPath=ref, filterLowComplex=False, outputName='out', suppressOutputAndFigures=True)
-    # mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
+    hlaBams = [args.bam1]
+    if args.bam2 != "not supplied":
+        hlaBams += [args.bam2]
+
+    # hlaBams = ['/Users/zacheliason/Downloads/hla-em/output_paired/trial_0/trial_0.1.Aligned.out.bam']
+    # ref = '/Users/zacheliason/Downloads/hla-em/hla_gen_ABC.fasta'
+    # mapReads(hlaBams, hlaRefPath=ref, filterLowComplex=False, outputName='out', suppressOutputAndFigures=True)
+    # # mapReads(hlaBams, hlaRefPath=args.reference, filterLowComplex=not (args.disabledust), outputName=args.outname, covMapYmax=args.ylimit)
 
 
 if __name__ == "__main__":
