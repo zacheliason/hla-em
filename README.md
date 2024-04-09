@@ -6,23 +6,36 @@ This Python script is used to generate simulation test cases for `HLA-EM.py`
 
 ### Usage
 
-To run the script, you can use the following command-line arguments:
+[//]: # ()
+[//]: # (To run the script, you can use the following command-line arguments:)
 
-```
-python3 src/simulate_reads.py [options]
-```
+[//]: # ()
+[//]: # (```)
 
-### Available Options
+[//]: # (python3 src/simulate_reads.py [options])
 
-- `-r`, `--hla_fasta_path`: Specifies the path to the HLA FASTA file. Default is 0.
-- `-m`, `--masked_genome_path`: Specifies the path to the masked genome directory. Default is 0.
-- `-n`, `--num_test_cases`: Specifies the number of samples per test case. Default is 5.
-- `--num_hla_reads`: Specifies the number of HLA reads to generate. Default is 1500.
-- `-l`, `--loh_number`: Specifies the number of alleles to lose heterozygosity. Default is 0.
-- `-e`, `--error_rate`: Specifies the error rate for `wgsim`. Default is 0.01.
-- `-h`, `--help`: Displays the help message and exits.
+[//]: # (```)
 
-### Example Usage
+[//]: # ()
+[//]: # (### Available Options)
+
+[//]: # ()
+[//]: # (- `-r`, `--hla_fasta_path`: Specifies the path to the HLA FASTA file. Default is 0.)
+
+[//]: # (- `-m`, `--masked_genome_path`: Specifies the path to the masked genome directory. Default is 0.)
+
+[//]: # (- `-n`, `--num_test_cases`: Specifies the number of samples per test case. Default is 5.)
+
+[//]: # (- `--num_hla_reads`: Specifies the number of HLA reads to generate. Default is 1500.)
+
+[//]: # (- `-l`, `--loh_number`: Specifies the number of alleles to lose heterozygosity. Default is 0.)
+
+[//]: # (- `-e`, `--error_rate`: Specifies the error rate for `wgsim`. Default is 0.01.)
+
+[//]: # (- `-h`, `--help`: Displays the help message and exits.)
+
+[//]: # ()
+[//]: # (### Example Usage)
 
 To generate the test cases we talked about previously (5 test cases of each of the following treatments: `100,000`, `50,000`, `10,000`, `5,000`, & `1,500` HLA reads out of `1,000,000` reads total) use the following command:
 
