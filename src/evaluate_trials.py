@@ -92,8 +92,15 @@ def score_optitype_output(output_dir, alleles_path):
 
 		# Retrieve predicted HLA alleles
 		try:
+			optitype_dir_contents = [os.path.join(optitype_dir, x) for x in os.listdir(optitype_dir)]
+			if all([os.path.isdir(x) for x in optitype_dir_contents]):
+				optitype_dir = optitype_dir_contents[0]
+
 			trial_results_path = [os.path.join(optitype_dir, x) for x in os.listdir(optitype_dir) if x.endswith("result.tsv")][0]
 		except:
+
+			trial_results_path = [os.path.join(optitype_dir, x) for x in os.listdir(optitype_dir)]
+			trial_results_path = [os.path.join(optitype_dir, x) for x in os.listdir(optitype_dir) if x.endswith("result.tsv")][0]
 			print(f"Could not find result.tsv for {trial_num}")
 			continue
 
