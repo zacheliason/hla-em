@@ -355,7 +355,11 @@ def main(argv):
             print("RecreateGenome finished with return code:", result.returncode)
 
         masked_genome = os.path.join(args.masked_genome_path, 'Genome.fa')
-        masked_genome = masked_genome.replace(PARENT_DIR, "")
+
+        masked_genome_path_list = os.path.split(masked_genome)
+        if len(masked_genome_path_list) > 1:
+            masked_genome_path_list = masked_genome_path_list[:-2]
+            masked_genome_path = os.path.join(*masked_genome_path_list)
 
     try:
         if not os.path.exists(reference_dir):
