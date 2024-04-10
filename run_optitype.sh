@@ -8,10 +8,10 @@ PARENT_DIR=$(dirname "$SCRIPT_PATH")
 HOST_PATH=$PARENT_DIR
 VOLUME_PATH="/out"
 
-# Run Optitype with paired reads
 for TRIAL_NUM in {0..24}; do
+  # Run Optitype with paired reads
   echo ""
-  echo "working on ${TRIAL_NUM}"
+  echo "working on paired ${TRIAL_NUM}"
 
   TRIAL_DIR="$VOLUME_PATH"/reference/samples/trial_"$TRIAL_NUM"
   OUTPUT_DIR="$VOLUME_PATH"/optitype_output_paired/optitype_results_run_"$TRIAL_NUM"
@@ -26,12 +26,9 @@ for TRIAL_NUM in {0..24}; do
     -r \
     -o "$OUTPUT_DIR"/optitype_results_run_"$TRIAL_NUM"
 
-done
-
-# Run Optitype with single reads
-for TRIAL_NUM in {0..24}; do
+  # Run Optitype with single reads
   echo ""
-  echo "working on ${TRIAL_NUM}"
+  echo "working on single ${TRIAL_NUM}"
 
   TRIAL_DIR="$VOLUME_PATH"/reference/samples/trial_"$TRIAL_NUM"
   OUTPUT_DIR="$VOLUME_PATH"/optitype_output_single/optitype_results_run_"$TRIAL_NUM"
