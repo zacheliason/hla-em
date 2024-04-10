@@ -72,8 +72,6 @@ def cmd(args, write=False, filepath=None, verbose=True):
 
 
 def filterReferenceFasta(genomeFastaFiles):
-    print(f"Filtering reference genome")
-
     directory, filename = os.path.split(genomeFastaFiles)
     base_name, extension = os.path.splitext(filename)
     if extension.lower() in ('.fa', '.fasta'):
@@ -82,6 +80,8 @@ def filterReferenceFasta(genomeFastaFiles):
         print(f"The file '{filename}' does not have a .fa or .fasta extension.")
 
     if not os.path.exists(filteredGenomeFastaFiles):
+        print(f"Filtering reference genome")
+
         filter_fasta(input_file=genomeFastaFiles, output_file=filteredGenomeFastaFiles)
 
     genomeDir = filteredGenomeFastaFiles + "_STAR"

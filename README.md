@@ -201,12 +201,11 @@ HLA-EM.py [-h] [-t THREADS] [-r REFERENCE] [--starHLA STARHLA] [-o OUTNAME]
 - Pie charts comparing MappedProportion and MLE_Probability for the predicted genotypes are written to `OUTNAME.props.pdf`.
 - The results of CreateMappedReadTable (a table of filtered HLA reads and references) are written to `OUTNAME.mappedReads.tsv`.
 - BAM files containing reads aligned to the HLA reference genomes are written to `OUTNAME.1.Aligned.*.bam`.
-
+- A log file for the EM algorithm is written to `OUTNAME.em_algorithm.Log`. The first line indicates how may steps the algorithm took to converge and second line shows the maximum likelihood estimate (MLE) of the sequencing error rate.
 
 [//]: # (This is a table including each HLA type with at least one read mapped to it, indicating the number of mapped reads, the proportion of all reads mapped to the HLA reference genomes mapped to this type, the MLE of the expected number of reads for this HLA type, and the MLE probability of this HLA type.)
 
 [//]: # ()
-[//]: # (The first two lines indicate how may steps the algorithm took to converge and the maximum likelihood estimate &#40;MLE&#41; of the sequencing error rate.  )
 
 [//]: # ()
 [//]: # (In addition to the results table, HLA-EM also generates read coverage maps for each HLA type with a non-zero MLE probability &#40;OUTNAME.\*.cov.pdf&#41; and a visualization of the difference between the mapped reads proportions and MLE probabilites &#40;OUTNAME.props.pdf&#41;.  The reads aligned to the HLA references are also recorded in BAM format &#40;OUTNAME.aligned.\*.bam&#41;.)

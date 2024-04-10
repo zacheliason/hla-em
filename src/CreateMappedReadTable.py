@@ -472,7 +472,6 @@ def mapReads(hlaBams, hlaRefPath='', annot='', filterLowComplex=False, outputNam
 
         # Iterate over the two mates
         for i in range(2):
-            mate = readAlign.hlaRefID_to_AlignInfo[refId][i]
             cigarList = list(filter(None, re.split('(\D+)', alignment_dict["readCIGAR"])))
             pos = alignment_dict['readPos']
 

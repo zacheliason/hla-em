@@ -358,8 +358,11 @@ def main(argv):
 
         masked_genome_path_list = os.path.split(masked_genome)
         if len(masked_genome_path_list) > 1:
-            masked_genome_path_list = masked_genome_path_list[:-2]
-            masked_genome_path = os.path.join(*masked_genome_path_list)
+            masked_genome_path_list = masked_genome_path_list[-2:]
+            masked_genome = os.path.join(*masked_genome_path_list)
+        else:
+            print('Failed to extract masked genome path. Exiting.')
+            sys.exit(1)
 
     try:
         if not os.path.exists(reference_dir):
